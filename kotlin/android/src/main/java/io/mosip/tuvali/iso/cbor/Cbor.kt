@@ -51,6 +51,11 @@ private const val EIGHT_BYTE_ARGUMENT = 27
 private const val INDEFINITE_LENGTH_ARGUMENT = 31
 private const val BREAK_BYTE = 0xff
 
+/**
+ * Encodes [item], keeping map keys in insertion order. Callers add keys in sorted order where a
+ * structure must be canonical (e.g. DeviceEngagement). cbor-java's own canonical mode is not used
+ * on purpose: its key sort compares signed bytes, so keys encoded from 0x80 up would be misordered.
+ */
 fun encodeCbor(item: DataItem): ByteArray {
   val outputStream = ByteArrayOutputStream()
   CborEncoder(outputStream).nonCanonical().encode(item)
