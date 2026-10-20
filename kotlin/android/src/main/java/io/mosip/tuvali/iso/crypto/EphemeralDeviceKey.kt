@@ -2,17 +2,11 @@ package io.mosip.tuvali.iso.crypto
 
 import java.math.BigInteger
 import java.security.SecureRandom
-import org.bouncycastle.crypto.ec.CustomNamedCurves
 import org.bouncycastle.crypto.generators.ECKeyPairGenerator
-import org.bouncycastle.crypto.params.ECDomainParameters
 import org.bouncycastle.crypto.params.ECKeyGenerationParameters
 import org.bouncycastle.crypto.params.ECPrivateKeyParameters
 import org.bouncycastle.crypto.params.ECPublicKeyParameters
 import org.bouncycastle.math.ec.FixedPointCombMultiplier
-
-private val P256: ECDomainParameters = CustomNamedCurves.getByName("secp256r1").let { curve ->
-  ECDomainParameters(curve.curve, curve.g, curve.n, curve.h)
-}
 
 /**
  * The mdoc's ephemeral P-256 key pair for one session (EDeviceKey, ISO 18013-5 clause 9.1.1.4).
