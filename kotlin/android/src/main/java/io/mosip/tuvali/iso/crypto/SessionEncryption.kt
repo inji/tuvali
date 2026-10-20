@@ -86,11 +86,13 @@ internal class SessionEncryption(
       deviceKey: EphemeralDeviceKey,
       readerCoseKey: ByteArray,
       deviceEngagementBytes: ByteArray,
+      handover: Handover = Handover.Qr,
     ): SessionEncryption {
       val readerKey = ReaderPublicKey.fromCoseKey(readerCoseKey)
       val secret = sharedSecret(deviceKey, readerKey)
       try {
-        return SessionEncryption(deriveSessionKeys(secret, sessionTranscriptBytes(deviceEngagementBytes, readerCoseKey)))
+        val transcript = sessionTranscriptBytes(deviceEngagementBytes, readerCoseKey, handover)
+        return SessionEncryption(deriveSessionKeys(secret, transcript))
       } finally {
         secret.fill(0)
       }

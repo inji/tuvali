@@ -1,6 +1,7 @@
 package io.mosip.tuvali.iso.crypto
 
 import io.mosip.tuvali.iso.engagement.DeviceEngagement
+import io.mosip.tuvali.iso.engagement.RetrievalMethod
 import io.mosip.tuvali.testutils.SessionTestVectors
 import io.mosip.tuvali.testutils.hexToBytes
 import io.mosip.tuvali.testutils.toHex
@@ -24,8 +25,10 @@ class BleIdentTest {
 
   @Test
   fun `bleIdent of a device engagement matches the Ident of the test vectors`() {
-    val deviceKey = EphemeralDeviceKey.fromPrivateScalar(vectors.getJSONObject("deviceKey").getString("privateScalar").hexToBytes())
-    val engagement = DeviceEngagement.create(deviceKey, UUID.fromString(vectors.getString("bleClientUuid")))
+    val scalar = vectors.getJSONObject("deviceKey").getString("privateScalar").hexToBytes()
+    val deviceKey = EphemeralDeviceKey.fromPrivateScalar(scalar)
+    val bleCentralClient = RetrievalMethod.BleCentralClient(UUID.fromString(vectors.getString("bleClientUuid")))
+    val engagement = DeviceEngagement.create(deviceKey, listOf(bleCentralClient))
 
     val ident = bleIdent(engagement.eDeviceKeyBytes)
 

@@ -10,7 +10,6 @@ import java.nio.ByteBuffer
 import java.security.SecureRandom
 import java.util.UUID
 
-private const val QR_SCHEME = "mdoc:"
 private const val ENGAGEMENT_VERSION = "1.0"
 private const val CIPHER_SUITE_1 = 1L
 
@@ -19,69 +18,52 @@ private const val KEY_VERSION = 0L
 private const val KEY_SECURITY = 1L
 private const val KEY_DEVICE_RETRIEVAL_METHODS = 2L
 
-// DeviceRetrievalMethod for BLE (Table 7) and its BleOptions keys (clause 8.2.2.3)
-private const val RETRIEVAL_TYPE_BLE = 2L
-private const val RETRIEVAL_VERSION_BLE = 1L
-private const val BLE_OPTION_PERIPHERAL_SERVER_MODE = 0L
-private const val BLE_OPTION_CENTRAL_CLIENT_MODE = 1L
-private const val BLE_OPTION_CENTRAL_CLIENT_UUID = 11L
-
 /**
- * What the wallet shows as a QR code to start an ISO 18013-5 session (clauses 8.2.1.1, 8.2.2.3).
+ * The device engagement structure that starts an ISO 18013-5 session (clause 8.2.1.1), whatever
+ * carries it to the reader: a QR code today (see [toQrText]), NFC handover later.
  *
- * It offers BLE with the mdoc as central client only: the reader advertises [bleClientUuid] and
- * the wallet connects to it. [bytes] are kept exactly as encoded, because the session transcript
- * (clause 9.1.5.1) must use the same bytes the reader decoded from the QR code.
+ * It lists the [retrievalMethods] the wallet offers; today that is BLE with the mdoc as central
+ * client only, where the reader advertises the method's UUID and the wallet connects to it. With
+ * no methods, DeviceRetrievalMethods is left out, as NFC engagement requires. [bytes] are kept
+ * exactly as encoded, because the session transcript (clause 9.1.5.1) must use the same bytes the
+ * reader received.
  */
 class DeviceEngagement private constructor(
   val deviceKey: EphemeralDeviceKey,
-  val bleClientUuid: UUID,
+  internal val retrievalMethods: List<RetrievalMethod>,
 ) {
   // encoded once and wrapped as-is, so the engagement and eDeviceKeyBytes hold the very same key bytes
   private val encodedCoseKey: ByteArray = encodeCbor(deviceKey.toCoseKey())
   private val encodedDeviceKey: ByteArray = encodeCbor(tag24(encodedCoseKey))
 
-  private val encoded: ByteArray = encodeCbor(
-    cborMapOf(
-      KEY_VERSION to ENGAGEMENT_VERSION,
-      KEY_SECURITY to cborArrayOf(CIPHER_SUITE_1, tag24(encodedCoseKey)),
-      KEY_DEVICE_RETRIEVAL_METHODS to cborArrayOf(
-        cborArrayOf(
-          RETRIEVAL_TYPE_BLE,
-          RETRIEVAL_VERSION_BLE,
-          cborMapOf(
-            BLE_OPTION_PERIPHERAL_SERVER_MODE to false,
-            BLE_OPTION_CENTRAL_CLIENT_MODE to true,
-            BLE_OPTION_CENTRAL_CLIENT_UUID to bleClientUuid.toBytes(),
-          ),
-        ),
-      ),
-    )
-  )
+  private val encoded: ByteArray = encodeCbor(cborMapOf(*engagementEntries().toTypedArray()))
 
-  /** The DeviceEngagement CBOR exactly as put in the QR code. */
+  /** The DeviceEngagement CBOR exactly as sent to the reader. */
   val bytes: ByteArray get() = encoded.copyOf()
 
   /** EDeviceKeyBytes: #6.24(bstr .cbor EDeviceKey), as used for the BLE Ident (clause 8.3.3.1.1.3). */
   val eDeviceKeyBytes: ByteArray get() = encodedDeviceKey.copyOf()
 
-  /** "mdoc:" followed by the engagement bytes in base64url without padding. */
-  val qrText: String = QR_SCHEME + encodeBase64UrlWithoutPadding(encoded)
+  private fun engagementEntries(): List<Pair<Any, Any?>> = buildList {
+    add(KEY_VERSION to ENGAGEMENT_VERSION)
+    add(KEY_SECURITY to cborArrayOf(CIPHER_SUITE_1, tag24(encodedCoseKey)))
+    if (retrievalMethods.isNotEmpty()) {
+      add(KEY_DEVICE_RETRIEVAL_METHODS to cborArrayOf(*retrievalMethods.map { it.toCbor() }.toTypedArray()))
+    }
+  }
 
   companion object {
-    /** A new engagement with a fresh ephemeral key and a fresh BLE UUID. */
-    fun create(random: SecureRandom = SecureRandom()): DeviceEngagement =
-      DeviceEngagement(EphemeralDeviceKey.generate(random), randomUuid(random))
+    /** A new engagement with a fresh ephemeral key, offering BLE central client mode with a fresh UUID. */
+    fun create(random: SecureRandom = SecureRandom()): DeviceEngagement {
+      val bleCentralClient = RetrievalMethod.BleCentralClient(randomUuid(random))
+      return DeviceEngagement(EphemeralDeviceKey.generate(random), listOf(bleCentralClient))
+    }
 
-    /** An engagement for a given key and UUID; used with fixed test vectors. */
-    internal fun create(deviceKey: EphemeralDeviceKey, bleClientUuid: UUID): DeviceEngagement =
-      DeviceEngagement(deviceKey, bleClientUuid)
+    /** An engagement for a given key and retrieval methods; used with fixed test vectors. */
+    internal fun create(deviceKey: EphemeralDeviceKey, retrievalMethods: List<RetrievalMethod>): DeviceEngagement =
+      DeviceEngagement(deviceKey, retrievalMethods)
   }
 }
-
-/** 16 bytes in RFC 4122 byte order (most significant first), as clause 8.3.3.1.1.2 requires. */
-private fun UUID.toBytes(): ByteArray =
-  ByteBuffer.allocate(16).putLong(mostSignificantBits).putLong(leastSignificantBits).array()
 
 /** A random (version 4) UUID of the RFC 4122 variant, drawn from [random]. */
 private fun randomUuid(random: SecureRandom): UUID {
