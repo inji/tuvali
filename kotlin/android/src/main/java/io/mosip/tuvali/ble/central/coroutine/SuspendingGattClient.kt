@@ -41,6 +41,7 @@ import kotlin.time.Duration.Companion.milliseconds
 // CCCD values are 16-bit little-endian: 0x0001 enables notifications, 0x0002 indications
 private val CCCD_ENABLE_NOTIFICATIONS = byteArrayOf(0x01, 0x00)
 private val CCCD_ENABLE_INDICATIONS = byteArrayOf(0x02, 0x00)
+private val CCCD_DISABLE = byteArrayOf(0x00, 0x00)
 
 /**
  * A Bluetooth LE GATT client where each operation suspends until Android's callback arrives.
@@ -198,6 +199,30 @@ class SuspendingGattClient(
     }
   }
 
+  /**
+   * Turns notifications off: writes 0x0000 to the CCCD, then stops Android delivering them.
+   * ISO 18013-5 clause 8.3.3.1.1.7 asks the client to unsubscribe before disconnecting.
+   */
+  suspend fun disableNotifications(serviceUuid: UUID, characteristicUuid: UUID, allowMissingCccd: Boolean = false) {
+    val characteristic = findCharacteristic(serviceUuid, characteristicUuid)
+    val cccd: BluetoothGattDescriptor? = characteristic.getDescriptor(CCCD_UUID)
+
+    if (cccd == null) {
+      if (!allowMissingCccd) throw GattAttributeNotFoundException("CCCD of $characteristicUuid")
+      operationMutex.withLock {
+        ensureConnected()
+        requireGatt().setCharacteristicNotification(characteristic, false)
+      }
+      return
+    }
+
+    runOperation<Unit>(GattOperation.DISABLE_NOTIFICATIONS, characteristicUuid, timeouts.operation) {
+      cccd.value = CCCD_DISABLE
+      requireGatt().writeDescriptor(cccd)
+    }
+    operationMutex.withLock { gatt?.setCharacteristicNotification(characteristic, false) }
+  }
+
   /** Disconnects and releases everything. Pending and later operations fail. */
   fun close() {
     mutableConnectionState.value = GattConnectionState.Disconnected
@@ -271,6 +296,13 @@ class SuspendingGattClient(
     pending.continuation.resumeWith(result)
   }
 
+  /** Which CCCD write (enable or disable) is waiting, if any. */
+  private fun pendingCccdOperation(): GattOperation? = synchronized(pendingOperationLock) {
+    pendingOperation?.operation?.takeIf {
+      it == GattOperation.ENABLE_NOTIFICATIONS || it == GattOperation.DISABLE_NOTIFICATIONS
+    }
+  }
+
   private fun failPendingOperation(failure: Exception) {
     val pending = synchronized(pendingOperationLock) {
       pendingOperation.also { pendingOperation = null }
@@ -322,6 +354,8 @@ class SuspendingGattClient(
         Log.i(logTag, "GATT link lost: $reason")
         mutableConnectionState.value = GattConnectionState.Lost(reason)
         failPendingOperation(GattDisconnectedException(reason))
+        // values already received are still delivered, then collectors get the exception
+        notificationChannel.close(GattDisconnectedException(reason))
       }
       GattConnectionState.Connecting -> failPendingOperation(GattDisconnectedException(reason))
       else -> Unit
@@ -384,7 +418,8 @@ class SuspendingGattClient(
 
     override fun onDescriptorWrite(callbackGatt: BluetoothGatt?, descriptor: BluetoothGattDescriptor?, status: Int) {
       if (descriptor?.uuid != CCCD_UUID) return
-      completeFromCallback(GattOperation.ENABLE_NOTIFICATIONS, descriptor.characteristic?.uuid, status) { Unit }
+      val cccdOperation = pendingCccdOperation() ?: return
+      completeFromCallback(cccdOperation, descriptor.characteristic?.uuid, status) { Unit }
     }
 
     override fun onCharacteristicChanged(callbackGatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {

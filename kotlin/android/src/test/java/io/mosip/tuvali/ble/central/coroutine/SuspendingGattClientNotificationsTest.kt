@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import io.mockk.every
 import io.mockk.verify
 import io.mosip.tuvali.ble.exception.GattAttributeNotFoundException
+import io.mosip.tuvali.ble.exception.GattDisconnectedException
 import io.mosip.tuvali.ble.exception.GattOperationFailedException
 import io.mosip.tuvali.testutils.ble.MockAndroidBluetooth
 import io.mosip.tuvali.testutils.ble.connectSuccessfully
@@ -155,5 +156,69 @@ class SuspendingGattClientNotificationsTest {
     val received = client.notifications.take(1).toList().single()
 
     assertEquals("aa", received.value.toHex())
+  }
+
+  @Test
+  fun `disableNotifications writes 0x0000 to the CCCD and turns notifications off locally`() = runTest {
+    connectSuccessfully(client, bluetooth)
+    val disabling = startOperation { client.disableNotifications(serviceUuid, notifyUuid) }
+
+    bluetooth.reportCccdWrite(notifying)
+    disabling.await()
+
+    assertEquals("0000", bluetooth.cccdValueOf(notifying)?.toHex())
+    verify { bluetooth.gatt.setCharacteristicNotification(notifying, false) }
+  }
+
+  @Test
+  fun `disableNotifications waits for Android to confirm the CCCD write before returning`() = runTest {
+    connectSuccessfully(client, bluetooth)
+
+    val disabling = startOperation { runCatching { client.disableNotifications(serviceUuid, notifyUuid) } }
+
+    assertTrue(disabling.isActive)
+  }
+
+  @Test
+  fun `disableNotifications throws GattOperationFailedException when Android reports a CCCD write error`() = runTest {
+    connectSuccessfully(client, bluetooth)
+    val disabling = startOperation { runCatching { client.disableNotifications(serviceUuid, notifyUuid) } }
+
+    bluetooth.reportCccdWrite(notifying, status = BluetoothGatt.GATT_FAILURE)
+
+    assertTrue(disabling.await().exceptionOrNull() is GattOperationFailedException)
+  }
+
+  @Test
+  fun `disableNotifications only turns notifications off locally when a missing CCCD is allowed`() = runTest {
+    connectSuccessfully(client, bluetooth)
+
+    client.disableNotifications(serviceUuid, noCccdUuid, allowMissingCccd = true)
+
+    verify { bluetooth.gatt.setCharacteristicNotification(withoutCccd, false) }
+    verify(exactly = 0) { bluetooth.gatt.writeDescriptor(any()) }
+  }
+
+  @Test
+  fun `notifications delivers values received before a link drop, then throws GattDisconnectedException`() = runTest {
+    connectSuccessfully(client, bluetooth)
+    bluetooth.reportNotification(notifying, "01".hexToBytes())
+
+    bluetooth.reportDisconnected()
+
+    val received = mutableListOf<String>()
+    val failure = runCatching { client.notifications.collect { received += it.value.toHex() } }.exceptionOrNull()
+    assertEquals(listOf("01"), received)
+    assertTrue(failure is GattDisconnectedException)
+  }
+
+  @Test
+  fun `notifications ends normally after close`() = runTest {
+    connectSuccessfully(client, bluetooth)
+    bluetooth.reportNotification(notifying, "01".hexToBytes())
+
+    client.close()
+
+    assertEquals(listOf("01"), client.notifications.toList().map { it.value.toHex() })
   }
 }
