@@ -73,6 +73,12 @@ internal class MdocSession(
     return SessionEvent.Request(request)
   }
 
+  /**
+   * SessionTranscriptBytes of this session, once the reader's first message arrived. The wallet
+   * needs them to sign the DeviceResponse (mdoc authentication covers the transcript).
+   */
+  fun sessionTranscriptBytes(): ByteArray? = sessionTranscript?.copyOf()
+
   /** Sends the encrypted DeviceResponse (built and signed outside Tuvali). */
   suspend fun respond(deviceResponse: ByteArray) {
     val sessionEncryption = checkNotNull(encryption) { "No request has been received" }
