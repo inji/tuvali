@@ -151,12 +151,37 @@ private fun toDataItem(value: Any?): DataItem = when (value) {
 }
 
 /**
+ * Throws [CborDecodingException] unless [encodedCbor] is one well-formed item in the strict form
+ * clause 8.1 asks of what we send: integers and lengths in their shortest form, definite lengths.
+ */
+fun requireStrictCbor(encodedCbor: ByteArray) = checkStructure(encodedCbor, strict = true)
+
+/** Rejects indefinite lengths and any argument that a shorter argument size could have held. */
+private fun checkStrictArgument(majorType: Int, additionalInfo: Int, argument: Long, isIndefinite: Boolean) {
+  if (isIndefinite) throw CborDecodingException("Indefinite length is not allowed in strict CBOR")
+  if (majorType == MAJOR_TYPE_SIMPLE_OR_FLOAT) return
+  val smallestForThisSize = when (additionalInfo) {
+    ONE_BYTE_ARGUMENT -> 24L
+    TWO_BYTE_ARGUMENT -> 0x100L
+    FOUR_BYTE_ARGUMENT -> 0x1_0000L
+    EIGHT_BYTE_ARGUMENT -> 0x1_0000_0000L
+    else -> return
+  }
+  // an 8-byte argument above Long.MAX_VALUE reads as negative and is necessarily in its shortest form
+  if (argument in 0 until smallestForThisSize) {
+    throw CborDecodingException("CBOR argument $argument is not in its shortest form")
+  }
+}
+
+/**
  * Walks the item headers without recursion before cbor-java decodes them, so hostile input
  * fails with [CborDecodingException] instead of a stack overflow or a huge allocation.
  * Checks: one complete top-level item, no trailing bytes, nesting within
  * [MAX_CBOR_NESTING_DEPTH], and no length or count larger than the remaining input.
+ * With [strict], also every integer, length and tag argument in its shortest form and no
+ * indefinite lengths (clause 8.1 rules 1 to 3); floats and simple values are not checked.
  */
-private fun checkStructure(encodedCbor: ByteArray) {
+private fun checkStructure(encodedCbor: ByteArray, strict: Boolean = false) {
   if (encodedCbor.isEmpty()) throw CborDecodingException("Empty CBOR input")
 
   val indefiniteLength = -1L
@@ -218,8 +243,10 @@ private fun checkStructure(encodedCbor: ByteArray) {
       continue
     }
     val majorType = initialByte ushr MAJOR_TYPE_SHIFT
-    val argument = readArgument(initialByte and ADDITIONAL_INFO_MASK)
+    val additionalInfo = initialByte and ADDITIONAL_INFO_MASK
+    val argument = readArgument(additionalInfo)
     val isIndefinite = argument == indefiniteLength
+    if (strict) checkStrictArgument(majorType, additionalInfo, argument, isIndefinite)
     if (isIndefinite && majorType !in MAJOR_TYPE_BYTE_STRING..MAJOR_TYPE_MAP) {
       throw CborDecodingException("Indefinite length not allowed for major type $majorType")
     }
