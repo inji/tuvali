@@ -79,20 +79,18 @@ internal class SessionEncryption(
 
   companion object {
     /**
-     * Sets up the session after the reader's first message: ECDH with the reader key, the
-     * transcript from the engagement and the reader key bytes as received, then the session keys.
+     * Sets up the session after the reader's first message: ECDH with the reader key, then the
+     * session keys derived with the SessionTranscriptBytes of this session as salt.
      */
     fun establish(
       deviceKey: EphemeralDeviceKey,
       readerCoseKey: ByteArray,
-      deviceEngagementBytes: ByteArray,
-      handover: Handover = Handover.Qr,
+      sessionTranscriptBytes: ByteArray,
     ): SessionEncryption {
       val readerKey = ReaderPublicKey.fromCoseKey(readerCoseKey)
       val secret = sharedSecret(deviceKey, readerKey)
       try {
-        val transcript = sessionTranscriptBytes(deviceEngagementBytes, readerCoseKey, handover)
-        return SessionEncryption(deriveSessionKeys(secret, transcript))
+        return SessionEncryption(deriveSessionKeys(secret, sessionTranscriptBytes))
       } finally {
         secret.fill(0)
       }

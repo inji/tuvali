@@ -2,8 +2,10 @@ package io.mosip.tuvali.iso.session
 
 import io.mosip.tuvali.iso.crypto.Handover
 import io.mosip.tuvali.iso.crypto.SessionEncryption
+import io.mosip.tuvali.iso.crypto.sessionTranscriptBytes
 import io.mosip.tuvali.iso.engagement.DeviceEngagement
 import io.mosip.tuvali.iso.exception.SessionProtocolException
+import io.mosip.tuvali.iso.readerauth.ReaderAuthenticator
 import io.mosip.tuvali.iso.transport.MdocTransport
 import io.mosip.tuvali.iso.transport.ReaderEvent
 import kotlin.coroutines.cancellation.CancellationException
@@ -21,15 +23,18 @@ internal sealed class SessionEvent {
  * reader's key; later requests come in SessionData. When a message cannot be used, the reader is
  * told why before the error is thrown: status 10 for a bad reader key, a message that does not
  * decrypt, or an attempt to re-establish the session (it is never re-keyed); status 11 for
- * anything that is not the expected CBOR or comes in the wrong order. Whether to answer a further
- * request is the caller's decision.
+ * anything that is not the expected CBOR or comes in the wrong order. Each requested document
+ * carries the result of checking its reader authentication with [readerAuthenticator]. Whether to
+ * answer a further request is the caller's decision.
  */
 internal class MdocSession(
   private val transport: MdocTransport,
   private val engagement: DeviceEngagement,
   private val handover: Handover = Handover.Qr,
+  private val readerAuthenticator: ReaderAuthenticator = ReaderAuthenticator(),
 ) {
   private var encryption: SessionEncryption? = null
+  private var sessionTranscript: ByteArray? = null
 
   /** Waits for the reader's next request, or for it to end the session. */
   suspend fun receiveRequest(): SessionEvent {
@@ -59,7 +64,12 @@ internal class MdocSession(
     val plaintext = tellReaderOnFailure(SessionStatus.ENCRYPTION_ERROR) {
       checkNotNull(encryption).decryptFromReader(encryptedRequest)
     }
-    val request = tellReaderOnFailure(SessionStatus.CBOR_DECODING_ERROR) { DeviceRequest.decode(plaintext) }
+    val transcript = checkNotNull(sessionTranscript)
+    val request = tellReaderOnFailure(SessionStatus.CBOR_DECODING_ERROR) {
+      DeviceRequest.decode(plaintext) { readerAuth, itemsRequestBytes ->
+        readerAuthenticator.check(readerAuth, transcript, itemsRequestBytes)
+      }
+    }
     return SessionEvent.Request(request)
   }
 
@@ -81,9 +91,11 @@ internal class MdocSession(
   }
 
   private suspend fun establishSession(establishment: SessionMessage.Establishment): ByteArray {
+    val transcript = sessionTranscriptBytes(engagement.bytes, establishment.readerCoseKey, handover)
     encryption = tellReaderOnFailure(SessionStatus.ENCRYPTION_ERROR) {
-      SessionEncryption.establish(engagement.deviceKey, establishment.readerCoseKey, engagement.bytes, handover)
+      SessionEncryption.establish(engagement.deviceKey, establishment.readerCoseKey, transcript)
     }
+    sessionTranscript = transcript
     return establishment.data
   }
 

@@ -167,7 +167,9 @@ class SessionEncryptionTest {
     val readerCoseKey = untag24(decodeCbor(vectors.getJSONObject("readerKey").getString("eReaderKeyBytes").hexToBytes()))
     val deviceEngagementBytes = vectors.getString("deviceEngagement").hexToBytes()
 
-    val encryption = SessionEncryption.establish(deviceKey, readerCoseKey, deviceEngagementBytes)
+    val transcript = sessionTranscriptBytes(deviceEngagementBytes, readerCoseKey)
+
+    val encryption = SessionEncryption.establish(deviceKey, readerCoseKey, transcript)
 
     val plaintext = encryption.decryptFromReader(firstFromReader.getString("ciphertext").hexToBytes())
     assertEquals(firstFromReader.getString("plaintext"), plaintext.toHex())

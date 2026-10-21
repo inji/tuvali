@@ -15,12 +15,19 @@ import io.mosip.tuvali.iso.exception.CborDecodingException
 import io.mosip.tuvali.iso.exception.InvalidReaderKeyException
 import io.mosip.tuvali.iso.exception.SessionDecryptionException
 import io.mosip.tuvali.iso.exception.SessionProtocolException
+import io.mosip.tuvali.iso.readerauth.ReaderAuthenticator
+import io.mosip.tuvali.iso.readerauth.ReaderTrust
 import io.mosip.tuvali.iso.transport.ReaderEvent
 import io.mosip.tuvali.testutils.ScriptedTransport
 import io.mosip.tuvali.testutils.SessionTestVectors
 import io.mosip.tuvali.testutils.encodeCanonicalCbor
 import io.mosip.tuvali.testutils.hexToBytes
 import io.mosip.tuvali.testutils.toHex
+import java.io.ByteArrayInputStream
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import java.time.Instant
+import java.util.Date
 import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -106,6 +113,35 @@ class MdocSessionTest {
       requireStrictCbor(sent)
       assertEquals(encodeCanonicalCbor(decodeCbor(sent)).toHex(), sent.toHex())
     }
+  }
+
+  // ---------- reader authentication ----------
+
+  @Test
+  fun `receiveRequest reports Verified for a document signed by a trusted reader`() = runTest {
+    val auth = vectors.getJSONObject("readerAuth")
+    val root = CertificateFactory.getInstance("X.509")
+      .generateCertificate(ByteArrayInputStream(auth.getString("rootCertificate").hexToBytes())) as X509Certificate
+    // the test reader certificates are valid from 2026-01-01 to 2029-01-01
+    val validationTime = Date.from(Instant.parse(auth.getString("validationTime")))
+    val transport = ScriptedTransport(ReaderEvent.Message(auth.getString("signedSessionEstablishment").hexToBytes()))
+    val authenticator = ReaderAuthenticator(listOf(root)) { validationTime }
+    val session = MdocSession(transport, engagement, readerAuthenticator = authenticator)
+
+    val event = session.receiveRequest()
+
+    val trust = (event as SessionEvent.Request).deviceRequest.docRequests.single().readerTrust
+    assertEquals("Tuvali Test Reader", (trust as ReaderTrust.Verified).readerName)
+  }
+
+  @Test
+  fun `receiveRequest reports NotSigned for documents the reader did not sign`() = runTest {
+    val (session, _) = sessionWith(message("sessionEstablishment"))
+
+    val event = session.receiveRequest()
+
+    val trusts = (event as SessionEvent.Request).deviceRequest.docRequests.map { it.readerTrust }
+    assertEquals(listOf(ReaderTrust.NotSigned, ReaderTrust.NotSigned), trusts)
   }
 
   // ---------- the reader ending ----------
