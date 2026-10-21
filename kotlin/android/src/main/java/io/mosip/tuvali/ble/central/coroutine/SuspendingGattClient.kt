@@ -90,7 +90,9 @@ internal class SuspendingGattClient(
 
   @TargetApi(Build.VERSION_CODES.M)
   suspend fun connect(device: BluetoothDevice) {
-    check(gatt == null && connectionState.value != GattConnectionState.Connecting) { "GATT client is already connected" }
+    check(gatt == null && connectionState.value != GattConnectionState.Connecting) {
+      "GATT client is already connected"
+    }
     mutableConnectionState.value = GattConnectionState.Connecting
     registerBluetoothStateReceiver()
     try {
@@ -117,7 +119,11 @@ internal class SuspendingGattClient(
    * Discovers services until [serviceUuid] appears. Android sometimes returns an incomplete
    * list right after connecting, so discovery is retried [attempts] times.
    */
-  suspend fun findService(serviceUuid: UUID, attempts: Int = 3, retryDelay: Duration = 500.milliseconds): BluetoothGattService {
+  suspend fun findService(
+    serviceUuid: UUID,
+    attempts: Int = 3,
+    retryDelay: Duration = 500.milliseconds,
+  ): BluetoothGattService {
     repeat(attempts) { attempt ->
       discoverServices().firstOrNull { service -> service.uuid == serviceUuid }?.let { service -> return service }
       if (attempt < attempts - 1) delay(retryDelay)
@@ -404,14 +410,22 @@ internal class SuspendingGattClient(
     override fun onMtuChanged(callbackGatt: BluetoothGatt?, mtu: Int, status: Int) =
       completeFromCallback(GattOperation.REQUEST_MTU, null, status) { mtu }
 
-    override fun onCharacteristicRead(callbackGatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+    override fun onCharacteristicRead(
+      callbackGatt: BluetoothGatt?,
+      characteristic: BluetoothGattCharacteristic?,
+      status: Int,
+    ) {
       val characteristicUuid = characteristic?.uuid ?: return
       completeFromCallback(GattOperation.READ_CHARACTERISTIC, characteristicUuid, status) {
         characteristic.value?.copyOf() ?: ByteArray(0)
       }
     }
 
-    override fun onCharacteristicWrite(callbackGatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+    override fun onCharacteristicWrite(
+      callbackGatt: BluetoothGatt?,
+      characteristic: BluetoothGattCharacteristic?,
+      status: Int,
+    ) {
       val characteristicUuid = characteristic?.uuid ?: return
       completeFromCallback(GattOperation.WRITE_CHARACTERISTIC, characteristicUuid, status) { Unit }
     }

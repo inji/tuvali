@@ -257,7 +257,9 @@ private fun checkStructure(encodedCbor: ByteArray, strict: Boolean = false) {
         openContainer(indefiniteLength)
       } else {
         val stringLength = argument
-        if (stringLength < 0 || stringLength > bytesRemaining()) throw CborDecodingException("CBOR string longer than the input")
+        if (stringLength < 0 || stringLength > bytesRemaining()) {
+          throw CborDecodingException("CBOR string longer than the input")
+        }
         readPosition += stringLength.toInt()
         markItemComplete()
       }
