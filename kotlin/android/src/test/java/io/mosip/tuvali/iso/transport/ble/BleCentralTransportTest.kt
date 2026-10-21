@@ -2,9 +2,9 @@ package io.mosip.tuvali.iso.transport.ble
 
 import io.mosip.tuvali.ble.central.coroutine.GattOperation
 import io.mosip.tuvali.ble.central.coroutine.LinkLossReason
-import io.mosip.tuvali.ble.exception.GattDisconnectedException
-import io.mosip.tuvali.ble.exception.GattOperationFailedException
-import io.mosip.tuvali.ble.exception.GattOperationTimeoutException
+import io.mosip.tuvali.iso.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.GattOperationFailedException
+import io.mosip.tuvali.iso.exception.GattOperationTimeoutException
 import io.mosip.tuvali.iso.exception.IsoTransportException
 import io.mosip.tuvali.iso.transport.ReaderEvent
 import io.mosip.tuvali.testutils.ble.MockIsoReader

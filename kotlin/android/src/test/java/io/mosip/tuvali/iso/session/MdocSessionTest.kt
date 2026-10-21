@@ -1,7 +1,7 @@
 package io.mosip.tuvali.iso.session
 
 import io.mosip.tuvali.ble.central.coroutine.LinkLossReason
-import io.mosip.tuvali.ble.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.GattDisconnectedException
 import io.mosip.tuvali.iso.cbor.cborMapOf
 import io.mosip.tuvali.iso.cbor.decodeCbor
 import io.mosip.tuvali.iso.cbor.encodeCbor

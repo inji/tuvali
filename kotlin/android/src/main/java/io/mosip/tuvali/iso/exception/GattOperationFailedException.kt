@@ -1,4 +1,4 @@
-package io.mosip.tuvali.ble.exception
+package io.mosip.tuvali.iso.exception
 
 import io.mosip.tuvali.ble.central.coroutine.GattOperation
 

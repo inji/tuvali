@@ -10,7 +10,7 @@ import io.mosip.tuvali.ble.central.coroutine.GattConnectionState
 import io.mosip.tuvali.ble.central.coroutine.GattNotification
 import io.mosip.tuvali.ble.central.coroutine.LinkLossReason
 import io.mosip.tuvali.ble.central.coroutine.SuspendingGattClient
-import io.mosip.tuvali.ble.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.GattDisconnectedException
 import io.mosip.tuvali.testutils.toHex
 import java.io.ByteArrayOutputStream
 import java.util.UUID

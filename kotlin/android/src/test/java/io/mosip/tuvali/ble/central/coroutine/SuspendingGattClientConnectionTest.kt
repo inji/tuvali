@@ -2,9 +2,9 @@ package io.mosip.tuvali.ble.central.coroutine
 
 import android.bluetooth.BluetoothGatt
 import io.mockk.verify
-import io.mosip.tuvali.ble.exception.GattDisconnectedException
-import io.mosip.tuvali.ble.exception.GattOperationFailedException
-import io.mosip.tuvali.ble.exception.GattOperationTimeoutException
+import io.mosip.tuvali.iso.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.GattOperationFailedException
+import io.mosip.tuvali.iso.exception.GattOperationTimeoutException
 import io.mosip.tuvali.testutils.ble.MockAndroidBluetooth
 import io.mosip.tuvali.testutils.ble.connectSuccessfully
 import io.mosip.tuvali.testutils.ble.startOperation

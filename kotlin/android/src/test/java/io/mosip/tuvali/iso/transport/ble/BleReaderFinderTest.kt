@@ -1,8 +1,8 @@
 package io.mosip.tuvali.iso.transport.ble
 
 import io.mosip.tuvali.ble.central.coroutine.LinkLossReason
-import io.mosip.tuvali.ble.exception.BleScanFailedException
-import io.mosip.tuvali.ble.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.BleScanFailedException
+import io.mosip.tuvali.iso.exception.GattDisconnectedException
 import io.mosip.tuvali.testutils.ble.MockAndroidBluetooth
 import io.mosip.tuvali.testutils.ble.MockBleScanning
 import io.mosip.tuvali.testutils.ble.startOperation

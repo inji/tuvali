@@ -5,8 +5,8 @@ import io.mosip.tuvali.ble.central.coroutine.GattConnectionState
 import io.mosip.tuvali.ble.central.coroutine.GattOperation
 import io.mosip.tuvali.ble.central.coroutine.LinkLossReason
 import io.mosip.tuvali.ble.central.coroutine.SuspendingGattClient
-import io.mosip.tuvali.ble.exception.GattDisconnectedException
-import io.mosip.tuvali.ble.exception.GattOperationFailedException
+import io.mosip.tuvali.iso.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.GattOperationFailedException
 import io.mosip.tuvali.iso.exception.IsoTransportException
 import io.mosip.tuvali.iso.transport.IsoChunker
 import io.mosip.tuvali.iso.transport.MdocTransport

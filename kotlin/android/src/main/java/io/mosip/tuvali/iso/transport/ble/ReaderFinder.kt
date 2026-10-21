@@ -9,8 +9,8 @@ import android.content.IntentFilter
 import android.util.Log
 import io.mosip.tuvali.ble.central.coroutine.LinkLossReason
 import io.mosip.tuvali.ble.central.impl.Scanner
-import io.mosip.tuvali.ble.exception.BleScanFailedException
-import io.mosip.tuvali.ble.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.BleScanFailedException
+import io.mosip.tuvali.iso.exception.GattDisconnectedException
 import io.mosip.tuvali.common.BluetoothStateChangeReceiver
 import io.mosip.tuvali.transfer.Util.Companion.getLogTag
 import java.util.UUID

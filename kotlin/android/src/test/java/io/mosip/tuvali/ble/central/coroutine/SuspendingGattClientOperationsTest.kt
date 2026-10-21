@@ -4,9 +4,9 @@ import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import io.mockk.every
 import io.mockk.verify
-import io.mosip.tuvali.ble.exception.GattAttributeNotFoundException
-import io.mosip.tuvali.ble.exception.GattDisconnectedException
-import io.mosip.tuvali.ble.exception.GattOperationFailedException
+import io.mosip.tuvali.iso.exception.GattAttributeNotFoundException
+import io.mosip.tuvali.iso.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.GattOperationFailedException
 import io.mosip.tuvali.testutils.ble.MockAndroidBluetooth
 import io.mosip.tuvali.testutils.ble.connectSuccessfully
 import io.mosip.tuvali.testutils.ble.startOperation

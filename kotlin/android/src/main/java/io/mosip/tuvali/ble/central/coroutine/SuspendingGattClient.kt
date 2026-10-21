@@ -14,10 +14,10 @@ import android.content.Context
 import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
-import io.mosip.tuvali.ble.exception.GattAttributeNotFoundException
-import io.mosip.tuvali.ble.exception.GattDisconnectedException
-import io.mosip.tuvali.ble.exception.GattOperationFailedException
-import io.mosip.tuvali.ble.exception.GattOperationTimeoutException
+import io.mosip.tuvali.iso.exception.GattAttributeNotFoundException
+import io.mosip.tuvali.iso.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.GattOperationFailedException
+import io.mosip.tuvali.iso.exception.GattOperationTimeoutException
 import io.mosip.tuvali.common.BluetoothStateChangeReceiver
 import io.mosip.tuvali.transfer.Util.Companion.getLogTag
 import java.util.UUID
