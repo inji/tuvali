@@ -29,7 +29,7 @@ import java.io.ByteArrayOutputStream
  * 4. Bounded nesting, and no length that runs past the input.
  */
 
-const val MAX_CBOR_NESTING_DEPTH = 64
+internal const val MAX_CBOR_NESTING_DEPTH = 64
 private const val TAG_ENCODED_CBOR = 24L
 
 // CBOR initial byte: top 3 bits = major type, low 5 bits = additional information (RFC 7049 2.1)
@@ -56,7 +56,7 @@ private const val BREAK_BYTE = 0xff
  * structure must be canonical (e.g. DeviceEngagement). cbor-java's own canonical mode is not used
  * on purpose: its key sort compares signed bytes, so keys encoded from 0x80 up would be misordered.
  */
-fun encodeCbor(item: DataItem): ByteArray {
+internal fun encodeCbor(item: DataItem): ByteArray {
   val outputStream = ByteArrayOutputStream()
   CborEncoder(outputStream).nonCanonical().encode(item)
   return outputStream.toByteArray()
@@ -72,7 +72,7 @@ fun encodeCbor(item: DataItem): ByteArray {
  * malformed or hostile input (truncated, trailing bytes, too deep, impossible lengths) are
  * rejected with [CborDecodingException]. Everything we send ourselves follows clause 8.1 exactly.
  */
-fun decodeCbor(encodedCbor: ByteArray): DataItem {
+internal fun decodeCbor(encodedCbor: ByteArray): DataItem {
   checkStructure(encodedCbor)
   val decodedItems = try {
     CborDecoder(ByteArrayInputStream(encodedCbor)).apply { isRejectDuplicateKeys = true }.decode()
@@ -110,14 +110,14 @@ private fun withDefiniteLengths(item: DataItem): DataItem {
   return definiteItem
 }
 
-fun cborArrayOf(vararg elements: Any?): DataItem {
+internal fun cborArrayOf(vararg elements: Any?): DataItem {
   val arrayBuilder = CborBuilder().addArray()
   elements.forEach { element -> arrayBuilder.add(toDataItem(element)) }
   return arrayBuilder.end().build()[0]
 }
 
 /** Builds a map in the given key order. Duplicate keys are a programming error (clause 8.1). */
-fun cborMapOf(vararg entries: Pair<Any, Any?>): DataItem {
+internal fun cborMapOf(vararg entries: Pair<Any, Any?>): DataItem {
   val keyItems = entries.map { (key, _) -> toDataItem(key) }
   require(keyItems.toSet().size == keyItems.size) { "Duplicate key in CBOR map" }
   val mapBuilder = CborBuilder().addMap()
@@ -126,18 +126,18 @@ fun cborMapOf(vararg entries: Pair<Any, Any?>): DataItem {
 }
 
 /** #6.24(bstr .cbor item): encodes [item] and wraps the bytes as a tag 24 byte string. */
-fun tag24(item: DataItem): ByteString = tag24(encodeCbor(item))
+internal fun tag24(item: DataItem): ByteString = tag24(encodeCbor(item))
 
-fun tag24(encodedCbor: ByteArray): ByteString = ByteString(encodedCbor).apply { setTag(TAG_ENCODED_CBOR) }
+internal fun tag24(encodedCbor: ByteArray): ByteString = ByteString(encodedCbor).apply { setTag(TAG_ENCODED_CBOR) }
 
-fun untag24(item: DataItem): ByteArray {
+internal fun untag24(item: DataItem): ByteArray {
   if (item !is ByteString || item.tag?.value != TAG_ENCODED_CBOR) {
     throw CborDecodingException("Expected a tag 24 byte string, found ${item.majorType} with tag ${item.tag?.value}")
   }
   return item.bytes
 }
 
-fun decodeTag24(item: DataItem): DataItem = decodeCbor(untag24(item))
+internal fun decodeTag24(item: DataItem): DataItem = decodeCbor(untag24(item))
 
 private fun toDataItem(value: Any?): DataItem = when (value) {
   null -> SimpleValue.NULL
@@ -154,7 +154,7 @@ private fun toDataItem(value: Any?): DataItem = when (value) {
  * Throws [CborDecodingException] unless [encodedCbor] is one well-formed item in the strict form
  * clause 8.1 asks of what we send: integers and lengths in their shortest form, definite lengths.
  */
-fun requireStrictCbor(encodedCbor: ByteArray) = checkStructure(encodedCbor, strict = true)
+internal fun requireStrictCbor(encodedCbor: ByteArray) = checkStructure(encodedCbor, strict = true)
 
 /** Rejects indefinite lengths and any argument that a shorter argument size could have held. */
 private fun checkStrictArgument(majorType: Int, additionalInfo: Int, argument: Long, isIndefinite: Boolean) {

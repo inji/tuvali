@@ -28,7 +28,7 @@ private const val KEY_DEVICE_RETRIEVAL_METHODS = 2L
  * exactly as encoded, because the session transcript (clause 9.1.5.1) must use the same bytes the
  * reader received.
  */
-class DeviceEngagement private constructor(
+internal class DeviceEngagement private constructor(
   val deviceKey: EphemeralDeviceKey,
   internal val retrievalMethods: List<RetrievalMethod>,
 ) {

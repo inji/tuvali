@@ -14,7 +14,7 @@ import org.bouncycastle.math.ec.FixedPointCombMultiplier
  * [wipe] drops the private key at the end of the session. The JVM cannot zero the underlying
  * BigInteger, so wiping means "no longer reachable or usable", not "overwritten in memory".
  */
-class EphemeralDeviceKey private constructor(privateKey: ECPrivateKeyParameters) {
+internal class EphemeralDeviceKey private constructor(privateKey: ECPrivateKeyParameters) {
 
   // volatile so a wipe on one thread is seen at once by a session using the key on another
   @Volatile

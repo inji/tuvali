@@ -60,7 +60,7 @@ private val CCCD_DISABLE = byteArrayOf(0x00, 0x00)
  * One instance serves one connection; create a new one per session.
  */
 @SuppressLint("MissingPermission")
-class SuspendingGattClient(
+internal class SuspendingGattClient(
   private val context: Context,
   private val timeouts: GattTimeouts = GattTimeouts(),
 ) {

@@ -13,7 +13,7 @@ fun <T> TestScope.startOperation(operation: suspend () -> T): Deferred<T> =
   async { operation() }.also { runCurrent() }
 
 /** Connects [client] to [bluetooth], playing Android's successful connection callback. */
-suspend fun TestScope.connectSuccessfully(client: SuspendingGattClient, bluetooth: MockAndroidBluetooth) {
+internal suspend fun TestScope.connectSuccessfully(client: SuspendingGattClient, bluetooth: MockAndroidBluetooth) {
   val connecting = startOperation { client.connect(bluetooth.device) }
   bluetooth.reportConnected()
   connecting.await()

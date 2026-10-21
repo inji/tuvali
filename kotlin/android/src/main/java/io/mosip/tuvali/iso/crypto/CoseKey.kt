@@ -15,7 +15,7 @@ internal const val COSE_CURVE_P256 = 1L
  * The public key as a COSE_Key: EC2 on P-256 with uncompressed x and y, and no optional
  * parameters besides crv, x and y (ISO 18013-5 clause 9.1.5.2).
  */
-fun EphemeralDeviceKey.toCoseKey(): DataItem = cborMapOf(
+internal fun EphemeralDeviceKey.toCoseKey(): DataItem = cborMapOf(
   COSE_LABEL_KEY_TYPE to COSE_KEY_TYPE_EC2,
   COSE_LABEL_CURVE to COSE_CURVE_P256,
   COSE_LABEL_X to x,

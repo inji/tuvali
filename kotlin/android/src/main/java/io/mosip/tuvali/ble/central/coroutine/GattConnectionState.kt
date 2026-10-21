@@ -1,7 +1,7 @@
 package io.mosip.tuvali.ble.central.coroutine
 
 /** Where the client's connection stands; [Lost] says why the link went down. */
-sealed class GattConnectionState {
+internal sealed class GattConnectionState {
   object Disconnected : GattConnectionState()
   object Connecting : GattConnectionState()
   object Connected : GattConnectionState()

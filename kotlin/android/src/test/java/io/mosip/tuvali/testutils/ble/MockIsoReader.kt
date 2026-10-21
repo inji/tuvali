@@ -19,10 +19,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 
 /** Table 12 characteristics of the mdoc reader service (ISO 18013-5 clause 8.3.3.1.1.4). */
-val READER_STATE: UUID = UUID.fromString("00000005-a123-48ce-896b-4c76973373e6")
-val READER_CLIENT_TO_SERVER: UUID = UUID.fromString("00000006-a123-48ce-896b-4c76973373e6")
-val READER_SERVER_TO_CLIENT: UUID = UUID.fromString("00000007-a123-48ce-896b-4c76973373e6")
-val READER_IDENT: UUID = UUID.fromString("00000008-a123-48ce-896b-4c76973373e6")
+internal val READER_STATE: UUID = UUID.fromString("00000005-a123-48ce-896b-4c76973373e6")
+internal val READER_CLIENT_TO_SERVER: UUID = UUID.fromString("00000006-a123-48ce-896b-4c76973373e6")
+internal val READER_SERVER_TO_CLIENT: UUID = UUID.fromString("00000007-a123-48ce-896b-4c76973373e6")
+internal val READER_IDENT: UUID = UUID.fromString("00000008-a123-48ce-896b-4c76973373e6")
 
 /**
  * A scripted ISO 18013-5 reader as seen through one [SuspendingGattClient] connection.
@@ -31,7 +31,7 @@ val READER_IDENT: UUID = UUID.fromString("00000008-a123-48ce-896b-4c76973373e6")
  * (in order, as [events]), and lets the test push chunked messages, End or a link drop. Its
  * chunking and reassembly are written independently of the production code.
  */
-class MockIsoReader(
+internal class MockIsoReader(
   private val serviceUuid: UUID,
   private val ident: ByteArray,
   val mtu: Int = 185,
