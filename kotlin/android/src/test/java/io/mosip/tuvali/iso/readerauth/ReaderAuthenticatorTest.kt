@@ -150,6 +150,22 @@ class ReaderAuthenticatorTest {
   }
 
   @Test
+  fun `check returns Verified for a signature with the fully-specified algorithm ESP256`() {
+    // COSE alg -9 is ESP256: ECDSA with SHA-256 on P-256 only (RFC 9864)
+    val trust = authenticator().check(readerAuth("esp256"), transcript, mdlItemsRequest)
+
+    assertEquals("Tuvali Test Reader", (trust as ReaderTrust.Verified).readerName)
+  }
+
+  @Test
+  fun `check returns Invalid when a fully-specified algorithm names another curve than the reader key`() {
+    // COSE alg -51 is ESP384 (P-384 only); this signature is SHA-384 ECDSA made with a P-256 key
+    val trust = authenticator().check(readerAuth("esp384WithP256Key"), transcript, mdlItemsRequest)
+
+    assertTrue(trust is ReaderTrust.Invalid)
+  }
+
+  @Test
   fun `check returns Invalid when the unprotected header has no x5chain`() {
     val noChain = rebuild(readerAuth("valid"), unprotectedHeader = cborMapOf())
 

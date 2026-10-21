@@ -27,9 +27,11 @@ import java.security.cert.PKIXParameters
 import java.security.cert.TrustAnchor
 import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
+import java.security.spec.ECFieldFp
 import java.util.Date
 import org.bouncycastle.asn1.ASN1Integer
 import org.bouncycastle.asn1.DERSequence
+import org.bouncycastle.asn1.nist.NISTNamedCurves
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x500.style.BCStyle
 
@@ -37,8 +39,19 @@ import org.bouncycastle.asn1.x500.style.BCStyle
 private const val COSE_HEADER_ALG = 1L
 private const val COSE_HEADER_X5CHAIN = 33L
 
-// COSE algorithms ES256, ES384 and ES512 (clause 9.1.4), as JCA signature names
-private val SUPPORTED_ALGORITHMS = mapOf(-7L to "SHA256withECDSA", -35L to "SHA384withECDSA", -36L to "SHA512withECDSA")
+/** A COSE ECDSA algorithm as a JCA signature name; a fully-specified one also fixes the curve. */
+private class EcdsaAlgorithm(val jcaName: String, val curveName: String? = null)
+
+// ES256, ES384 and ES512 (clause 9.1.4), and their fully-specified forms ESP256, ESP384 and ESP512
+// (RFC 9864, IANA COSE registry), which readers such as Multipaz send and which allow only one curve
+private val SUPPORTED_ALGORITHMS = mapOf(
+  -7L to EcdsaAlgorithm("SHA256withECDSA"),
+  -35L to EcdsaAlgorithm("SHA384withECDSA"),
+  -36L to EcdsaAlgorithm("SHA512withECDSA"),
+  -9L to EcdsaAlgorithm("SHA256withECDSA", curveName = "P-256"),
+  -51L to EcdsaAlgorithm("SHA384withECDSA", curveName = "P-384"),
+  -52L to EcdsaAlgorithm("SHA512withECDSA", curveName = "P-521"),
+)
 
 // Annex B Table B.6
 private const val EKU_MDL_READER_AUTH = "1.0.18013.5.1.6"
@@ -49,7 +62,8 @@ private const val COSE_SIGN1_ELEMENTS = 4
 /**
  * Checks a DocRequest's readerAuth (clause 9.1.4): an untagged COSE_Sign1 with a detached payload,
  * signed over ReaderAuthenticationBytes = #6.24(["ReaderAuthentication", SessionTranscript,
- * ItemsRequestBytes]) with ES256, ES384 or ES512, carrying the reader certificate chain in x5chain.
+ * ItemsRequestBytes]) with ES256, ES384 or ES512 (or their fully-specified forms ESP256, ESP384 and
+ * ESP512, which also pin the curve), carrying the reader certificate chain in x5chain.
  *
  * The reader certificate must be valid at [now] and, when it has key usage or extended key usage,
  * allow digital signatures for mdoc reader authentication (Annex B Table B.6). The chain is then
@@ -87,9 +101,16 @@ internal class ReaderAuthenticator(
     val chain = certificateChain(unprotected)
     val readerCertificate = chain.first()
     checkReaderCertificate(readerCertificate)
+    algorithm.curveName?.let { curveName ->
+      if (!isOnCurve(readerCertificate.publicKey as ECPublicKey, curveName)) {
+        reject("Reader key is not on $curveName, which the signature algorithm requires")
+      }
+    }
 
     val signedBytes = sigStructure(protectedBytes, readerAuthenticationBytes(sessionTranscriptBytes, itemsRequestBytes))
-    if (!verify(algorithm, readerCertificate, signedBytes, signature)) reject("Reader signature does not verify")
+    if (!verify(algorithm.jcaName, readerCertificate, signedBytes, signature)) {
+      reject("Reader signature does not verify")
+    }
 
     val readerName = commonNameOf(readerCertificate)
     val untrustedReason = chainProblem(chain) ?: return ReaderTrust.Verified(readerName, chain)
@@ -129,6 +150,16 @@ internal class ReaderAuthenticator(
       if (EKU_MDL_READER_AUTH !in extendedKeyUsage) reject("Reader certificate is not for mdoc reader authentication")
     }
     if (certificate.publicKey !is ECPublicKey) reject("Reader certificate does not hold an EC key")
+  }
+
+  /** Compares the key's curve with the named NIST curve itself, not just its size (brainpoolP256r1 is 256 bits too). */
+  private fun isOnCurve(publicKey: ECPublicKey, curveName: String): Boolean {
+    val expected = NISTNamedCurves.getByName(curveName).curve
+    val actual = publicKey.params.curve
+    val field = actual.field as? ECFieldFp ?: return false
+    return field.p == expected.field.characteristic &&
+      actual.a == expected.a.toBigInteger() &&
+      actual.b == expected.b.toBigInteger()
   }
 
   /** ReaderAuthenticationBytes, built from the transcript and ItemsRequest bytes exactly as they are. */
