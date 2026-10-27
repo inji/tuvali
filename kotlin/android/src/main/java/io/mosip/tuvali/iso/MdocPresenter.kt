@@ -20,6 +20,7 @@ import io.mosip.tuvali.iso.readerauth.ReaderTrust
 import io.mosip.tuvali.iso.session.DeviceRequest
 import io.mosip.tuvali.iso.session.MdocSession
 import io.mosip.tuvali.iso.session.SessionEvent
+import io.mosip.tuvali.iso.session.SessionStatus
 import io.mosip.tuvali.iso.transport.MdocTransport
 import io.mosip.tuvali.iso.transport.ble.BleCentralTransport
 import io.mosip.tuvali.iso.transport.ble.BleReaderFinder
@@ -151,6 +152,12 @@ class MdocPresenter internal constructor(
       when (event) {
         is SessionEvent.Ended -> {
           progress.sessionEnded = true
+          if (event.status != null && event.status != SessionStatus.SESSION_TERMINATION) {
+            val failure = if (event.status == SessionStatus.ENCRYPTION_ERROR || event.status == SessionStatus.CBOR_DECODING_ERROR) {
+              MdocFailure.READER_REPORTED_ERROR
+            } else MdocFailure.READER_ENDED
+            return MdocResult.Failed(failure, "Reader ended with session status ${event.status}")
+          }
           return if (progress.answered) MdocResult.Completed(confirmedByReader = true)
           else MdocResult.Failed(MdocFailure.READER_ENDED, "The reader ended the session without a request")
         }

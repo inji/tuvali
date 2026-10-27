@@ -69,6 +69,19 @@ class DeviceRequestTest {
   }
 
   @Test
+  fun `decode rejects malformed versions`() {
+    listOf("", "1", "1.", ".0", "1.foo", "1.0.extra", "+1.0", "1.-1", "1. 0", "١.٠").forEach { version ->
+      assertThrows(CborDecodingException::class.java) { decodeRequest(deviceRequest(version = version)) }
+    }
+  }
+
+  @Test
+  fun `decode accepts unknown numeric minor version without integer size limit`() {
+    val version = "1.123456789012345678901234567890"
+    assertEquals(version, decodeRequest(deviceRequest(version = version)).version)
+  }
+
+  @Test
   fun `decode accepts a later minor version`() {
     // clause 8.1: a known major version with an unknown minor version is not an error
     val request = decodeRequest(deviceRequest(version = "1.1"))

@@ -36,7 +36,11 @@ internal class DeviceRequest(val version: String, val docRequests: List<DocReque
 
     // a known major version with an unknown minor version is not an error (clause 8.1)
     private fun checkMajorVersion(version: String) {
-      val major = version.substringBefore('.').toIntOrNull()
+      val parts = version.split('.')
+      if (parts.size != 2 || parts.any { it.isEmpty() || it.any { character -> character !in '0'..'9' } }) {
+        throw CborDecodingException("Malformed DeviceRequest version $version")
+      }
+      val major = parts[0].toIntOrNull()
       if (major != SUPPORTED_MAJOR_VERSION) throw CborDecodingException("Unsupported DeviceRequest version $version")
     }
   }

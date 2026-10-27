@@ -89,5 +89,7 @@ enum class MdocFailure {
   READER_ENDED,
   REQUEST_UNREADABLE,
   READER_SECURITY_ERROR,
+  /** The reader reported session status 10 or 11; the status is included in the failure detail. */
+  READER_REPORTED_ERROR,
   INTERNAL_ERROR,
 }

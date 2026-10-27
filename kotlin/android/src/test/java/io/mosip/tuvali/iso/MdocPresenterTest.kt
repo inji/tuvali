@@ -5,6 +5,8 @@ import io.mosip.tuvali.iso.engagement.DeviceEngagement
 import io.mosip.tuvali.iso.engagement.RetrievalMethod
 import io.mosip.tuvali.iso.exception.GattDisconnectedException
 import io.mosip.tuvali.ble.central.coroutine.LinkLossReason
+import io.mosip.tuvali.iso.session.SessionMessage
+import io.mosip.tuvali.iso.session.SessionStatus
 import io.mosip.tuvali.iso.transport.ReaderEvent
 import io.mosip.tuvali.testutils.ScriptedTransport
 import io.mosip.tuvali.testutils.SessionTestVectors
@@ -74,6 +76,35 @@ class MdocPresenterTest {
 
   private fun TestScope.startPresenting(callbacks: MdocCallbacks) =
     async { presenter.present(options, callbacks) }.also { runCurrent() }
+
+  private suspend fun assertReaderReportedError(status: Int) {
+    transport.queue(message("sessionEstablishment"))
+    transport.queue(ReaderEvent.Message(SessionMessage.Data(status = status).encode()))
+    val result = presenter.present(options, RecordingCallbacks()) as MdocResult.Failed
+    assertEquals(MdocFailure.READER_REPORTED_ERROR, result.failure)
+    assertEquals("Reader ended with session status $status", result.detail)
+    assertEquals(1, transport.sent.size)
+    assertTrue(transport.closed)
+  }
+
+  @Test
+  fun `reader encryption error after response is not success`() = runTest {
+    assertReaderReportedError(SessionStatus.ENCRYPTION_ERROR)
+  }
+
+  @Test
+  fun `reader CBOR error after response is not success`() = runTest {
+    assertReaderReportedError(SessionStatus.CBOR_DECODING_ERROR)
+  }
+
+  @Test
+  fun `reader normal termination after response remains confirmed`() = runTest {
+    transport.queue(message("sessionEstablishment"))
+    transport.queue(ReaderEvent.Message(SessionMessage.Data(status = SessionStatus.SESSION_TERMINATION).encode()))
+    val result = presenter.present(options, RecordingCallbacks()) as MdocResult.Completed
+    assertTrue(result.confirmedByReader)
+    assertEquals(1, transport.sent.size)
+  }
 
   // ---------- the normal flow ----------
 
