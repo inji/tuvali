@@ -26,7 +26,6 @@ internal class ReaderPublicKey private constructor(val publicKey: ECPublicKeyPar
   val y: ByteArray get() = yBytes.copyOf()
 
   companion object {
-    /** Parses and checks the COSE_Key bytes carried inside EReaderKeyBytes. */
     fun fromCoseKey(encodedCoseKey: ByteArray): ReaderPublicKey {
       val coseKey = decodeCbor(encodedCoseKey) as? CborMap
         ?: throw InvalidReaderKeyException("EReaderKey is not a COSE_Key map")

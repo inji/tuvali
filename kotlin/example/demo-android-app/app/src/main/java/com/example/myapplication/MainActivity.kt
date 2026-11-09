@@ -98,10 +98,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
     }
   }
 
-  // ============================================================
-  // WALLET SIDE
-  // ============================================================
-
   @SuppressLint("MissingInflatedId")
   private fun startScanningWithUri(uri: String) {
     showLoadingLayout()
@@ -150,10 +146,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
     wallet.disconnect()
     showActionsView()
   }
-
-  // ============================================================
-  // VERIFIER SIDE
-  // ============================================================
 
   @SuppressLint("SetTextI18n")
   private fun startAdvertising() {
@@ -269,7 +261,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
     }
   }
 
-  /** Shows Send / Decline and waits for a tap. */
   private suspend fun askHolder(answer: ByteArray): MdocSharingDecision {
     val decision = CompletableDeferred<MdocSharingDecision>()
     val buttons = findViewById<LinearLayout>(R.id.mdocDecisionLayout)
@@ -318,10 +309,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
     is MdocResult.Failed -> "Failed: ${result.failure} ${result.detail.orEmpty()}"
   }
 
-  // ============================================================
-  // UI HELPERS
-  // ============================================================
-
   private fun setCancelLoadingButton(onClick: (View) -> Unit) {
     findViewById<Button>(R.id.cancelLoadingBtn)?.setOnClickListener(onClick)
   }
@@ -363,7 +350,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
     }
   }
 
-  // LOGGING HELPERS
   private fun logPayload(prefix: String, data: Any?) {
     when (data) {
       is ByteArray -> Log.d(TAG, "$prefix (bytes=${data.size})")
@@ -381,10 +367,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
       else -> data.toString()
     }
   }
-
-  // ============================================================
-  // KEYBOARD DISMISS ON OUTSIDE TAP
-  // ============================================================
 
   override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
     val v = currentFocus

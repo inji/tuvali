@@ -73,7 +73,6 @@ internal class BleCentralTransport(
     }
   }
 
-  /** Sends one whole message to the reader on Client2Server, split into parts. */
   override suspend fun send(message: ByteArray) {
     val openClient = checkNotNull(client) { "Transport is not open" }
     check(!readerEnded) { "Reader already ended the session" }

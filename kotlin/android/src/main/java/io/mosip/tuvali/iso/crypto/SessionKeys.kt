@@ -8,7 +8,6 @@ private const val INFO_DEVICE_KEY = "SKDevice"
 
 /** SKReader encrypts the reader's requests, SKDevice our responses (clause 9.1.1.5). */
 internal class SessionKeys(val skReader: ByteArray, val skDevice: ByteArray) {
-  /** Overwrites both keys with zeros. */
   fun wipe() {
     skReader.fill(0)
     skDevice.fill(0)

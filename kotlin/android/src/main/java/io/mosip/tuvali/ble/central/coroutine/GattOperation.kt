@@ -1,6 +1,5 @@
 package io.mosip.tuvali.ble.central.coroutine
 
-/** The GATT operations the client runs, one at a time. */
 internal enum class GattOperation {
   CONNECT,
   DISCOVER_SERVICES,

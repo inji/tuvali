@@ -15,7 +15,6 @@ internal interface MdocTransport {
   /** Finds and connects to the reader, ready to exchange messages. */
   suspend fun open()
 
-  /** Sends one whole message to the reader. */
   suspend fun send(message: ByteArray)
 
   /** Waits for the reader's next whole message, or for it to end the session. */
