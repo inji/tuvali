@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.verify
 import io.mosip.tuvali.iso.exception.GattAttributeNotFoundException
 import io.mosip.tuvali.iso.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.GattNotificationOverflowException
 import io.mosip.tuvali.iso.exception.GattOperationFailedException
 import io.mosip.tuvali.testutils.ble.MockAndroidBluetooth
 import io.mosip.tuvali.testutils.ble.connectSuccessfully
@@ -210,6 +211,31 @@ class SuspendingGattClientNotificationsTest {
     val failure = runCatching { client.notifications.collect { received += it.value.toHex() } }.exceptionOrNull()
     assertEquals(listOf("01"), received)
     assertTrue(failure is GattDisconnectedException)
+  }
+
+  @Test
+  fun `notifications keeps every value up to the queue limit while nothing collects them`() = runTest {
+    connectSuccessfully(client, bluetooth)
+
+    repeat(MAX_QUEUED_GATT_NOTIFICATIONS) { bluetooth.reportNotification(notifying, "01".hexToBytes()) }
+
+    assertEquals(MAX_QUEUED_GATT_NOTIFICATIONS, client.notifications.take(MAX_QUEUED_GATT_NOTIFICATIONS).toList().size)
+    assertEquals(GattConnectionState.Connected, client.connectionState.value)
+  }
+
+  @Test
+  fun `notifications throws GattNotificationOverflowException and the connection closes when a reader floods the queue`() = runTest {
+    connectSuccessfully(client, bluetooth)
+
+    // one more than may wait unread
+    repeat(MAX_QUEUED_GATT_NOTIFICATIONS + 1) { bluetooth.reportNotification(notifying, "01".hexToBytes()) }
+
+    var received = 0
+    val failure = runCatching { client.notifications.collect { received++ } }.exceptionOrNull()
+    assertTrue(failure is GattNotificationOverflowException)
+    assertEquals(MAX_QUEUED_GATT_NOTIFICATIONS, received)
+    assertEquals(GattConnectionState.Disconnected, client.connectionState.value)
+    verify { bluetooth.gatt.disconnect() }
   }
 
   @Test

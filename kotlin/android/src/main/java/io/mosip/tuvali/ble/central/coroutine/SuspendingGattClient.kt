@@ -16,6 +16,7 @@ import android.os.Build
 import android.util.Log
 import io.mosip.tuvali.iso.exception.GattAttributeNotFoundException
 import io.mosip.tuvali.iso.exception.GattDisconnectedException
+import io.mosip.tuvali.iso.exception.GattNotificationOverflowException
 import io.mosip.tuvali.iso.exception.GattOperationFailedException
 import io.mosip.tuvali.iso.exception.GattOperationTimeoutException
 import io.mosip.tuvali.common.BluetoothStateChangeReceiver
@@ -59,6 +60,9 @@ private val CCCD_DISABLE = byteArrayOf(0x00, 0x00)
  *
  * One instance serves one connection; create a new one per session.
  */
+/** Notifications that may wait unread before the connection is closed as flooded. */
+internal const val MAX_QUEUED_GATT_NOTIFICATIONS = 4096
+
 @SuppressLint("MissingPermission")
 internal class SuspendingGattClient(
   private val context: Context,
@@ -69,7 +73,7 @@ internal class SuspendingGattClient(
   private val mutableConnectionState = MutableStateFlow<GattConnectionState>(GattConnectionState.Disconnected)
   val connectionState: StateFlow<GattConnectionState> = mutableConnectionState.asStateFlow()
 
-  private val notificationChannel = Channel<GattNotification>(Channel.UNLIMITED)
+  private val notificationChannel = Channel<GattNotification>(MAX_QUEUED_GATT_NOTIFICATIONS)
 
   /** Values pushed by the remote server, in arrival order. Meant for a single collector. */
   val notifications: Flow<GattNotification> = notificationChannel.receiveAsFlow()
@@ -354,6 +358,15 @@ internal class SuspendingGattClient(
     bluetoothStateReceiver = null
   }
 
+  private fun onNotificationOverflow() {
+    val overflow = GattNotificationOverflowException(MAX_QUEUED_GATT_NOTIFICATIONS)
+    Log.e(logTag, overflow.message ?: "Notification queue overflow")
+    // collectors get the overflow, not a normal end, before the connection is closed
+    notificationChannel.close(overflow)
+    failPendingOperation(overflow)
+    close()
+  }
+
   private fun onLinkLost(reason: LinkLossReason) {
     when (connectionState.value) {
       GattConnectionState.Connected -> {
@@ -439,7 +452,8 @@ internal class SuspendingGattClient(
     override fun onCharacteristicChanged(callbackGatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
       val characteristicUuid = characteristic?.uuid ?: return
       val value = characteristic.value?.copyOf() ?: ByteArray(0)
-      notificationChannel.trySend(GattNotification(characteristicUuid, value))
+      val delivery = notificationChannel.trySend(GattNotification(characteristicUuid, value))
+      if (delivery.isFailure && !delivery.isClosed) onNotificationOverflow()
     }
   }
 }
