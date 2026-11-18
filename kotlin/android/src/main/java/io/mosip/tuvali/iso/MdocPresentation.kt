@@ -1,6 +1,7 @@
 package io.mosip.tuvali.iso
 
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -13,7 +14,17 @@ data class MdocPresentationOptions(
   val engagementTimeout: Duration = 60.seconds,
   // clause 9.1.1.4: no-activity time-out of at least 300 s
   val inactivityTimeout: Duration = 300.seconds,
-)
+) {
+  init {
+    require(listOf(engagementTimeout, inactivityTimeout).all { it.isPositive() && it <= MAX_TIMEOUT }) {
+      "Timeouts must be positive and no longer than one year"
+    }
+  }
+
+  private companion object {
+    val MAX_TIMEOUT = 365.days
+  }
+}
 
 /** What the wallet is told and asked during a presentation. */
 interface MdocCallbacks {
