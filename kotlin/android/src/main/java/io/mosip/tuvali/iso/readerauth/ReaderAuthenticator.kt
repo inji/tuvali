@@ -3,6 +3,7 @@ package io.mosip.tuvali.iso.readerauth
 import co.nstant.`in`.cbor.model.ByteString
 import co.nstant.`in`.cbor.model.DataItem
 import co.nstant.`in`.cbor.model.Map as CborMap
+import co.nstant.`in`.cbor.model.NegativeInteger
 import co.nstant.`in`.cbor.model.Number as CborNumber
 import co.nstant.`in`.cbor.model.SimpleValue
 import co.nstant.`in`.cbor.model.UnicodeString
@@ -38,6 +39,10 @@ import org.bouncycastle.asn1.x500.style.BCStyle
 // COSE header labels (IANA COSE registry): alg in the protected header, x5chain in the unprotected one
 private const val COSE_HEADER_ALG = 1L
 private const val COSE_HEADER_X5CHAIN = 33L
+private const val COSE_HEADER_CRIT = 2L
+// the same limits as the iOS reader authentication
+private const val MAX_CHAIN_CERTIFICATES = 8
+private const val MAX_CERTIFICATE_BYTES = 64 * 1024
 
 /** A COSE ECDSA algorithm as a JCA signature name; a fully-specified one also fixes the curve. */
 private class EcdsaAlgorithm(val jcaName: String, val curveName: String? = null)
@@ -97,7 +102,9 @@ internal class ReaderAuthenticator(
     if (sign1[2] != SimpleValue.NULL) reject("readerAuth payload must be detached (null)")
     val signature = sign1[3].asBytes("signature")
 
-    val algorithm = SUPPORTED_ALGORITHMS[algorithmOf(protectedBytes)] ?: reject("Unsupported signature algorithm")
+    val protectedHeader = if (protectedBytes.isEmpty()) CborMap() else decodeCbor(protectedBytes).asMap("protected header")
+    validateHeaders(protectedHeader, unprotected)
+    val algorithm = SUPPORTED_ALGORITHMS[algorithmOf(protectedHeader)] ?: reject("Unsupported signature algorithm")
     val chain = certificateChain(unprotected)
     val readerCertificate = chain.first()
     checkReaderCertificate(readerCertificate)
@@ -117,10 +124,32 @@ internal class ReaderAuthenticator(
     return ReaderTrust.Unverified(readerName, chain, untrustedReason)
   }
 
-  private fun algorithmOf(protectedBytes: ByteArray): Long? {
-    if (protectedBytes.isEmpty()) return null
-    val alg = decodeCbor(protectedBytes).asMap("protected header").get(UnsignedInteger(COSE_HEADER_ALG))
-    return (alg as? CborNumber)?.value?.toLong()
+  /**
+   * COSE header rules (RFC 9052 section 3): labels are integers or text, no label is in both
+   * buckets, and crit is protected and names only headers this profile understands, which is alg.
+   */
+  private fun validateHeaders(protectedHeader: CborMap, unprotected: CborMap) {
+    val protectedLabels = protectedHeader.keys
+    val unprotectedLabels = unprotected.keys
+    if ((protectedLabels + unprotectedLabels).any { it !is UnsignedInteger && it !is NegativeInteger && it !is UnicodeString }) {
+      reject("Invalid COSE header label")
+    }
+    if (protectedLabels.any { it in unprotectedLabels }) reject("COSE header label appears in both buckets")
+    val critLabel = UnsignedInteger(COSE_HEADER_CRIT)
+    if (unprotected.get(critLabel) != null) reject("crit must be protected")
+    val crit = protectedHeader.get(critLabel) ?: return
+    val labels = crit.asArray("crit")
+    if (labels.isEmpty() || labels.toSet().size != labels.size) reject("Invalid crit header")
+    val algLabel = UnsignedInteger(COSE_HEADER_ALG)
+    if (labels.any { it != algLabel } || protectedHeader.get(algLabel) == null) {
+      reject("Unsupported critical COSE header")
+    }
+  }
+
+  private fun algorithmOf(protectedHeader: CborMap): Long? {
+    val alg = protectedHeader.get(UnsignedInteger(COSE_HEADER_ALG))
+    // exact: a label outside the Long range is unsupported, never wrapped onto a supported one
+    return runCatching { (alg as? CborNumber)?.value?.longValueExact() }.getOrNull()
   }
 
   /** x5chain is one certificate or an array of them, the reader's own certificate first. */
@@ -130,7 +159,11 @@ internal class ReaderAuthenticator(
       is ByteString -> listOf(x5chain.bytes)
       else -> x5chain.asArray("x5chain").map { it.asBytes("certificate") }
     }
-    if (encodedCertificates.isEmpty()) reject("x5chain is empty")
+    if (encodedCertificates.size !in 1..MAX_CHAIN_CERTIFICATES ||
+      encodedCertificates.any { it.isEmpty() || it.size > MAX_CERTIFICATE_BYTES }
+    ) {
+      reject("x5chain exceeds certificate count or size limits")
+    }
     val factory = CertificateFactory.getInstance("X.509")
     return encodedCertificates.map { der -> factory.generateCertificate(ByteArrayInputStream(der)) as X509Certificate }
   }
@@ -184,7 +217,9 @@ internal class ReaderAuthenticator(
     signedBytes: ByteArray,
     coseSignature: ByteArray,
   ): Boolean {
-    if (coseSignature.isEmpty() || coseSignature.size % 2 != 0) return false
+    // COSE carries ECDSA as r ‖ s, each exactly as long as the key's field (64 bytes in all for P-256)
+    val fieldBytes = ((certificate.publicKey as ECPublicKey).params.curve.field.fieldSize + 7) / 8
+    if (coseSignature.size != 2 * fieldBytes) return false
     val half = coseSignature.size / 2
     val r = BigInteger(1, coseSignature.copyOfRange(0, half))
     val s = BigInteger(1, coseSignature.copyOfRange(half, coseSignature.size))

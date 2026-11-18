@@ -2,7 +2,10 @@ package io.mosip.tuvali.iso.readerauth
 
 import co.nstant.`in`.cbor.model.ByteString
 import co.nstant.`in`.cbor.model.DataItem
+import co.nstant.`in`.cbor.model.Map as CborMap
+import co.nstant.`in`.cbor.model.NegativeInteger
 import co.nstant.`in`.cbor.model.Tag
+import co.nstant.`in`.cbor.model.UnsignedInteger
 import io.mosip.tuvali.iso.cbor.cborArrayOf
 import io.mosip.tuvali.iso.cbor.cborMapOf
 import io.mosip.tuvali.iso.cbor.decodeCbor
@@ -150,6 +153,16 @@ class ReaderAuthenticatorTest {
   }
 
   @Test
+  fun `check returns Invalid for an algorithm label that would wrap around to ES256`() {
+    // {1: 2^64 - 7}: as a Long this wraps to -7, the label of ES256
+    val wrapsToEs256 = rebuild(readerAuth("valid"), protectedHeader = "a1011bfffffffffffffff9".hexToBytes())
+
+    val trust = authenticator().check(wrapsToEs256, transcript, mdlItemsRequest)
+
+    assertTrue(trust is ReaderTrust.Invalid)
+  }
+
+  @Test
   fun `check returns Verified for a signature with the fully-specified algorithm ESP256`() {
     // COSE alg -9 is ESP256: ECDSA with SHA-256 on P-256 only (RFC 9864)
     val trust = authenticator().check(readerAuth("esp256"), transcript, mdlItemsRequest)
@@ -193,6 +206,86 @@ class ReaderAuthenticatorTest {
     assertTrue(trust is ReaderTrust.Invalid)
   }
 
+  // ---------- COSE header rules, x5chain limits and signature size (parity with iOS) ----------
+
+  @Test
+  fun `check returns Invalid when crit names a header other than alg`() {
+    // {1: -7 (ES256), 2 (crit): [33 (x5chain)]}
+    val critX5chain = rebuild(readerAuth("valid"), protectedHeader = encodeCbor(cborMapOf(1L to -7L, 2L to cborArrayOf(33L))))
+
+    val trust = authenticator().check(critX5chain, transcript, mdlItemsRequest)
+
+    assertEquals("Unsupported critical COSE header", (trust as ReaderTrust.Invalid).reason)
+  }
+
+  @Test
+  fun `check returns Invalid when crit lists alg twice`() {
+    val duplicateCrit = rebuild(readerAuth("valid"), protectedHeader = encodeCbor(cborMapOf(1L to -7L, 2L to cborArrayOf(1L, 1L))))
+
+    val trust = authenticator().check(duplicateCrit, transcript, mdlItemsRequest)
+
+    assertEquals("Invalid crit header", (trust as ReaderTrust.Invalid).reason)
+  }
+
+  @Test
+  fun `check returns Invalid when crit is in the unprotected header`() {
+    val unprotectedCrit = rebuild(readerAuth("valid"), unprotectedHeader = unprotectedWith(UnsignedInteger(2) to cborArrayOf(1L)))
+
+    val trust = authenticator().check(unprotectedCrit, transcript, mdlItemsRequest)
+
+    assertEquals("crit must be protected", (trust as ReaderTrust.Invalid).reason)
+  }
+
+  @Test
+  fun `check returns Invalid when a header label is in both the protected and the unprotected header`() {
+    // alg is already protected
+    val algTwice = rebuild(readerAuth("valid"), unprotectedHeader = unprotectedWith(UnsignedInteger(1) to NegativeInteger(-7)))
+
+    val trust = authenticator().check(algTwice, transcript, mdlItemsRequest)
+
+    assertEquals("COSE header label appears in both buckets", (trust as ReaderTrust.Invalid).reason)
+  }
+
+  @Test
+  fun `check returns Invalid for a header label that is neither an integer nor text`() {
+    val byteStringLabel = rebuild(readerAuth("valid"), unprotectedHeader = unprotectedWith(ByteString(byteArrayOf(1)) to ByteString(byteArrayOf(1))))
+
+    val trust = authenticator().check(byteStringLabel, transcript, mdlItemsRequest)
+
+    assertEquals("Invalid COSE header label", (trust as ReaderTrust.Invalid).reason)
+  }
+
+  @Test
+  fun `check returns Invalid for an x5chain of more than eight certificates`() {
+    val readerCertificate = x5chainOf(readerAuth("valid")).first()
+    val nineCertificates = cborMapOf(33L to cborArrayOf(*Array<Any?>(9) { readerCertificate }))
+
+    val trust = authenticator().check(rebuild(readerAuth("valid"), unprotectedHeader = nineCertificates), transcript, mdlItemsRequest)
+
+    assertEquals("x5chain exceeds certificate count or size limits", (trust as ReaderTrust.Invalid).reason)
+  }
+
+  @Test
+  fun `check returns Invalid for a certificate larger than 64 KiB`() {
+    val oversized = cborMapOf(33L to ByteArray(64 * 1024 + 1))
+
+    val trust = authenticator().check(rebuild(readerAuth("valid"), unprotectedHeader = oversized), transcript, mdlItemsRequest)
+
+    assertEquals("x5chain exceeds certificate count or size limits", (trust as ReaderTrust.Invalid).reason)
+  }
+
+  @Test
+  fun `check returns Invalid when a P-256 signature is not exactly 64 bytes`() {
+    // r and s padded with a leading zero each: the same numbers, 66 bytes in all
+    val padded = rebuild(readerAuth("valid"), signature = { raw ->
+      byteArrayOf(0) + raw.copyOfRange(0, 32) + byteArrayOf(0) + raw.copyOfRange(32, 64)
+    })
+
+    val trust = authenticator().check(padded, transcript, mdlItemsRequest)
+
+    assertEquals("Reader signature does not verify", (trust as ReaderTrust.Invalid).reason)
+  }
+
   @Test
   fun `check accepts a COSE_Sign1 that carries the COSE_Sign1 tag`() {
     // clause 9.1.4 asks for an untagged COSE_Sign1; tag 18 is accepted as well
@@ -206,6 +299,21 @@ class ReaderAuthenticatorTest {
   private fun certificate(hex: String): X509Certificate {
     val factory = CertificateFactory.getInstance("X.509")
     return factory.generateCertificate(ByteArrayInputStream(hex.hexToBytes())) as X509Certificate
+  }
+
+  /** The valid readerAuth's unprotected header with [extra] entries added. */
+  private fun unprotectedWith(vararg extra: Pair<DataItem, DataItem>): DataItem {
+    val original = readerAuth("valid").items()[1] as CborMap
+    return CborMap().apply {
+      original.keys.forEach { key -> put(key, original.get(key)) }
+      extra.forEach { (key, value) -> put(key, value) }
+    }
+  }
+
+  /** The encoded certificates in a readerAuth's x5chain, whether it holds one or an array. */
+  private fun x5chainOf(readerAuth: DataItem): List<ByteArray> {
+    val x5chain = (readerAuth.items()[1] as CborMap).get(UnsignedInteger(33))
+    return if (x5chain is ByteString) listOf(x5chain.bytes) else x5chain.items().map { (it as ByteString).bytes }
   }
 
   /** Rebuilds a COSE_Sign1 with some parts replaced, to test one fault at a time. */
