@@ -90,7 +90,11 @@ class MdocPresenter internal constructor(
         // cancel() cancels only the presentation; if our caller was cancelled, pass that on
         if (presentation.isCancelled && isActive) MdocResult.Cancelled else throw cancelled
       } finally {
-        running.compareAndSet(presentation, null)
+        // hold the slot until a cancelled presentation has closed the link and wiped its keys
+        withContext(NonCancellable) {
+          presentation.join()
+          running.compareAndSet(presentation, null)
+        }
       }
     }
   }
