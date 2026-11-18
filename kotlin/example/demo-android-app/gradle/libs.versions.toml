@@ -8,7 +8,7 @@ espressoCore = "3.5.1"
 lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.7.0"
 composeBom = "2023.08.00"
-tuvali = "1.0.0-rc2-SNAPSHOT"
+tuvali = "1.0.0-rc.2-SNAPSHOT"
 zxingAndroidEmbedded = "4.3.0"
 
 [libraries]
