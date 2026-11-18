@@ -2,7 +2,7 @@ package io.mosip.tuvali.iso.session
 
 import io.mosip.tuvali.iso.cbor.asBytes
 import io.mosip.tuvali.iso.cbor.asMap
-import io.mosip.tuvali.iso.cbor.asUnsignedInt
+import io.mosip.tuvali.iso.cbor.asSmallUnsignedInt
 import io.mosip.tuvali.iso.cbor.cborMapOf
 import io.mosip.tuvali.iso.cbor.decodeCbor
 import io.mosip.tuvali.iso.cbor.encodeCbor
@@ -52,7 +52,7 @@ internal sealed class SessionMessage {
       val map = decodeCbor(message).asMap("Session message")
       val readerKey = map.optional(KEY_READER_KEY) ?: return Data(
         data = map.optional(KEY_DATA)?.asBytes(KEY_DATA),
-        status = map.optional(KEY_STATUS)?.asUnsignedInt(KEY_STATUS)?.toInt(),
+        status = map.optional(KEY_STATUS)?.asSmallUnsignedInt(KEY_STATUS),
       )
       return Establishment(
         readerCoseKey = untag24(readerKey),

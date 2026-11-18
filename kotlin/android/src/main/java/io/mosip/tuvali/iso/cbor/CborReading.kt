@@ -24,8 +24,21 @@ internal fun DataItem.asText(what: String): String =
 internal fun DataItem.asBytes(what: String): ByteArray =
   (this as? ByteString)?.bytes ?: throw CborDecodingException("$what must be a byte string")
 
-internal fun DataItem.asUnsignedInt(what: String): Long =
-  (this as? UnsignedInteger)?.value?.toLong() ?: throw CborDecodingException("$what must be an unsigned integer")
+internal fun DataItem.asUnsignedInt(what: String): Long {
+  val value = (this as? UnsignedInteger)?.value ?: throw CborDecodingException("$what must be an unsigned integer")
+  return try {
+    value.longValueExact()
+  } catch (_: ArithmeticException) {
+    throw CborDecodingException("$what is out of range")
+  }
+}
+
+/** An unsigned integer that fits an Int exactly, such as a session status. */
+internal fun DataItem.asSmallUnsignedInt(what: String): Int {
+  val value = asUnsignedInt(what)
+  if (value > Int.MAX_VALUE) throw CborDecodingException("$what is out of range")
+  return value.toInt()
+}
 
 internal fun DataItem.asBoolean(what: String): Boolean = when (this) {
   SimpleValue.TRUE -> true

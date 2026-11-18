@@ -65,6 +65,22 @@ class SessionMessageTest {
   }
 
   @Test
+  fun `decode throws CborDecodingException for a status larger than an Int instead of wrapping it to 20`() {
+    // {"status": 4294967316}, which is 2^32 + 20
+    val wrapsTo20 = "a1667374617475731b0000000100000014".hexToBytes()
+
+    assertThrows(CborDecodingException::class.java) { SessionMessage.decode(wrapsTo20) }
+  }
+
+  @Test
+  fun `decode throws CborDecodingException for a status larger than a Long`() {
+    // {"status": 2^64 - 1}
+    val maxUnsigned = "a1667374617475731bffffffffffffffff".hexToBytes()
+
+    assertThrows(CborDecodingException::class.java) { SessionMessage.decode(maxUnsigned) }
+  }
+
+  @Test
   fun `Data encode writes only the data when there is no status`() {
     val data = "a1b2".hexToBytes()
 
