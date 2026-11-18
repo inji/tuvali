@@ -115,8 +115,13 @@ internal class MdocSession(
   }
 
   private suspend fun sendStatusBestEffortToReader(status: Int) {
-    runCatching { transport.send(SessionMessage.Data(status = status).encode()) }
-      .onFailure { Log.w(logTag, "Could not send status $status to the reader: ${it.message}") }
+    try {
+      transport.send(SessionMessage.Data(status = status).encode())
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: Exception) {
+      Log.w(logTag, "Could not send status $status to the reader: ${failure.message}")
+    }
   }
 
   /** Runs [step]; if it fails, sends [status] to the reader ( best effort) and rethrows. */

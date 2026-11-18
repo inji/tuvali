@@ -32,6 +32,7 @@ import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -179,6 +180,19 @@ class MdocSessionTest {
 
     assertTrue(failure is InvalidReaderKeyException)
     assertEquals(messages.getString("statusEncryptionError"), transport.sent.single().toHex())
+  }
+
+  @Test
+  fun `receiveRequest passes on a cancellation that arrives while it reports an invalid reader key`() = runTest {
+    val badKey = encodeCbor(cborMapOf(1L to 2L, -1L to 1L, -2L to ByteArray(32), -3L to ByteArray(32)))
+    val establishment = encodeCbor(cborMapOf("eReaderKey" to tag24(badKey), "data" to ByteArray(20)))
+    val (session, transport) = sessionWith(ReaderEvent.Message(establishment))
+    // the inactivity timeout fires while status 10 is being sent
+    transport.failOnSend = CancellationException("timed out")
+
+    val failure = runCatching { session.receiveRequest() }.exceptionOrNull()
+
+    assertTrue(failure is CancellationException)
   }
 
   @Test
