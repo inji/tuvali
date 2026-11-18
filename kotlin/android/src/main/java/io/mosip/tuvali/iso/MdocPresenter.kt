@@ -47,6 +47,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 // how long the cleanup may spend telling the reader and closing the connection
 private val CLEANUP_STEP_TIMEOUT = 2.seconds
 
+private const val TUVALI_PACKAGE = "io.mosip.tuvali."
+
 /**
  * Presents mdoc credentials to an ISO 18013-5 reader in person: shows the QR code, waits for the
  * reader to connect, hands each request to the wallet for consent, and sends the signed answer.
@@ -120,7 +122,7 @@ class MdocPresenter internal constructor(
     val transport = try {
       createTransport(engagement)
     } catch (failure: Exception) {
-      Log.e(logTag, "Could not set up the connection to the reader", failure)
+      logFailure(failure, "Could not set up the connection to the reader")
       // nothing was opened yet; only the fresh key needs destroying
       engagement.deviceKey.wipe()
       return MdocResult.Failed(MdocFailure.INTERNAL_ERROR, failure.message)
@@ -132,7 +134,7 @@ class MdocPresenter internal constructor(
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {
-      Log.e(logTag, "Presentation failed with ${failure.javaClass.simpleName}: ${failure.message}", failure)
+      logFailure(failure)
       resultFor(failure, progress)
     } finally {
       withContext(NonCancellable) { endPresentation(session, transport, progress) }
@@ -214,6 +216,15 @@ class MdocPresenter internal constructor(
     }
     runCatching { withTimeout(CLEANUP_STEP_TIMEOUT) { transport.close() } }
     session.wipe()
+  }
+
+  // errors from the wallet's callbacks may carry its data, so only their type is logged
+  private fun logFailure(failure: Exception, what: String = "Presentation failed") {
+    if (failure.javaClass.name.startsWith(TUVALI_PACKAGE)) {
+      Log.e(logTag, "$what with ${failure.javaClass.simpleName}: ${failure.message}", failure)
+    } else {
+      Log.e(logTag, "$what with ${failure.javaClass.simpleName} from the wallet")
+    }
   }
 
   private fun resultFor(failure: Exception, progress: Progress): MdocResult {
