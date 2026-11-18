@@ -68,7 +68,7 @@ internal class BleCentralTransport(
       } catch (exception: Exception) {
         candidate.close()
         if (!isLostBeforeStart(exception) || ++lostConnections >= maxConnectAttempts) throw exception
-        Log.i(logTag, "Link lost before Start ($lostConnections of $maxConnectAttempts); connecting again")
+        Log.i(logTag, "Link lost before Start ($lostConnections of $maxConnectAttempts): ${exception.message}; connecting again")
       }
     }
   }

@@ -1,6 +1,7 @@
 package io.mosip.tuvali.iso
 
 import android.content.Context
+import android.util.Log
 import io.mosip.tuvali.ble.central.coroutine.LinkLossReason
 import io.mosip.tuvali.ble.central.coroutine.SuspendingGattClient
 import io.mosip.tuvali.iso.crypto.bleIdent
@@ -24,6 +25,7 @@ import io.mosip.tuvali.iso.session.SessionStatus
 import io.mosip.tuvali.iso.transport.MdocTransport
 import io.mosip.tuvali.iso.transport.ble.BleCentralTransport
 import io.mosip.tuvali.iso.transport.ble.BleReaderFinder
+import io.mosip.tuvali.transfer.Util.Companion.getLogTag
 import java.io.ByteArrayInputStream
 import java.security.cert.CertificateException
 import java.security.cert.CertificateFactory
@@ -58,6 +60,8 @@ class MdocPresenter internal constructor(
   private val createTransport: (DeviceEngagement) -> MdocTransport,
   private val now: () -> Date,
 ) {
+  private val logTag = getLogTag(javaClass.simpleName)
+
   constructor(context: Context) : this(
     createEngagement = { DeviceEngagement.create() },
     createTransport = { engagement -> transportFor(context, engagement) },
@@ -112,6 +116,7 @@ class MdocPresenter internal constructor(
     val transport = try {
       createTransport(engagement)
     } catch (failure: Exception) {
+      Log.e(logTag, "Could not set up the connection to the reader", failure)
       // nothing was opened yet; only the fresh key needs destroying
       engagement.deviceKey.wipe()
       return MdocResult.Failed(MdocFailure.INTERNAL_ERROR, failure.message)
@@ -123,6 +128,7 @@ class MdocPresenter internal constructor(
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {
+      Log.e(logTag, "Presentation failed with ${failure.javaClass.simpleName}: ${failure.message}", failure)
       resultFor(failure, progress)
     } finally {
       withContext(NonCancellable) { endPresentation(session, transport, progress) }

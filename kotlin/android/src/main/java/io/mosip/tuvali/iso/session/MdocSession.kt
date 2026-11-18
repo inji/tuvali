@@ -1,5 +1,6 @@
 package io.mosip.tuvali.iso.session
 
+import android.util.Log
 import io.mosip.tuvali.iso.crypto.Handover
 import io.mosip.tuvali.iso.crypto.SessionEncryption
 import io.mosip.tuvali.iso.crypto.sessionTranscriptBytes
@@ -8,6 +9,7 @@ import io.mosip.tuvali.iso.exception.SessionProtocolException
 import io.mosip.tuvali.iso.readerauth.ReaderAuthenticator
 import io.mosip.tuvali.iso.transport.MdocTransport
 import io.mosip.tuvali.iso.transport.ReaderEvent
+import io.mosip.tuvali.transfer.Util.Companion.getLogTag
 import kotlin.coroutines.cancellation.CancellationException
 
 /** What the reader did: sent a request, or ended the session (with its status, if it sent one). */
@@ -33,6 +35,7 @@ internal class MdocSession(
   private val handover: Handover = Handover.Qr,
   private val readerAuthenticator: ReaderAuthenticator = ReaderAuthenticator(),
 ) {
+  private val logTag = getLogTag(javaClass.simpleName)
   private var encryption: SessionEncryption? = null
   private var sessionTranscript: ByteArray? = null
 
@@ -113,6 +116,7 @@ internal class MdocSession(
 
   private suspend fun sendStatusBestEffortToReader(status: Int) {
     runCatching { transport.send(SessionMessage.Data(status = status).encode()) }
+      .onFailure { Log.w(logTag, "Could not send status $status to the reader: ${it.message}") }
   }
 
   /** Runs [step]; if it fails, sends [status] to the reader ( best effort) and rethrows. */
