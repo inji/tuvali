@@ -40,7 +40,6 @@ import org.bouncycastle.asn1.x500.style.BCStyle
 private const val COSE_HEADER_ALG = 1L
 private const val COSE_HEADER_X5CHAIN = 33L
 private const val COSE_HEADER_CRIT = 2L
-// the same limits as the iOS reader authentication
 private const val MAX_CHAIN_CERTIFICATES = 8
 private const val MAX_CERTIFICATE_BYTES = 64 * 1024
 
@@ -124,10 +123,7 @@ internal class ReaderAuthenticator(
     return ReaderTrust.Unverified(readerName, chain, untrustedReason)
   }
 
-  /**
-   * COSE header rules (RFC 9052 section 3): labels are integers or text, no label is in both
-   * buckets, and crit is protected and names only headers this profile understands, which is alg.
-   */
+  // RFC 9052 section 3; alg is the only header this profile understands
   private fun validateHeaders(protectedHeader: CborMap, unprotected: CborMap) {
     val protectedLabels = protectedHeader.keys
     val unprotectedLabels = unprotected.keys
@@ -148,8 +144,8 @@ internal class ReaderAuthenticator(
 
   private fun algorithmOf(protectedHeader: CborMap): Long? {
     val alg = protectedHeader.get(UnsignedInteger(COSE_HEADER_ALG))
-    // exact: a label outside the Long range is unsupported, never wrapped onto a supported one
-    return runCatching { (alg as? CborNumber)?.value?.longValueExact() }.getOrNull()
+    val value = (alg as? CborNumber)?.value ?: return null
+    return if (value.bitLength() > Long.SIZE_BITS - 1) null else value.toLong()
   }
 
   /** x5chain is one certificate or an array of them, the reader's own certificate first. */
@@ -217,7 +213,7 @@ internal class ReaderAuthenticator(
     signedBytes: ByteArray,
     coseSignature: ByteArray,
   ): Boolean {
-    // COSE carries ECDSA as r ‖ s, each exactly as long as the key's field (64 bytes in all for P-256)
+    // raw r ‖ s, each the length of the key's field
     val fieldBytes = ((certificate.publicKey as ECPublicKey).params.curve.field.fieldSize + 7) / 8
     if (coseSignature.size != 2 * fieldBytes) return false
     val half = coseSignature.size / 2

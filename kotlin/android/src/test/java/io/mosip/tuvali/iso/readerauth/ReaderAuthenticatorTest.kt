@@ -159,7 +159,7 @@ class ReaderAuthenticatorTest {
 
     val trust = authenticator().check(wrapsToEs256, transcript, mdlItemsRequest)
 
-    assertTrue(trust is ReaderTrust.Invalid)
+    assertEquals("Unsupported signature algorithm", (trust as ReaderTrust.Invalid).reason)
   }
 
   @Test
@@ -206,7 +206,7 @@ class ReaderAuthenticatorTest {
     assertTrue(trust is ReaderTrust.Invalid)
   }
 
-  // ---------- COSE header rules, x5chain limits and signature size (parity with iOS) ----------
+  // ---------- COSE headers, x5chain limits and signature size ----------
 
   @Test
   fun `check returns Invalid when crit names a header other than alg`() {
@@ -301,7 +301,6 @@ class ReaderAuthenticatorTest {
     return factory.generateCertificate(ByteArrayInputStream(hex.hexToBytes())) as X509Certificate
   }
 
-  /** The valid readerAuth's unprotected header with [extra] entries added. */
   private fun unprotectedWith(vararg extra: Pair<DataItem, DataItem>): DataItem {
     val original = readerAuth("valid").items()[1] as CborMap
     return CborMap().apply {
@@ -310,7 +309,6 @@ class ReaderAuthenticatorTest {
     }
   }
 
-  /** The encoded certificates in a readerAuth's x5chain, whether it holds one or an array. */
   private fun x5chainOf(readerAuth: DataItem): List<ByteArray> {
     val x5chain = (readerAuth.items()[1] as CborMap).get(UnsignedInteger(33))
     return if (x5chain is ByteString) listOf(x5chain.bytes) else x5chain.items().map { (it as ByteString).bytes }

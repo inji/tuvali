@@ -26,14 +26,10 @@ internal fun DataItem.asBytes(what: String): ByteArray =
 
 internal fun DataItem.asUnsignedInt(what: String): Long {
   val value = (this as? UnsignedInteger)?.value ?: throw CborDecodingException("$what must be an unsigned integer")
-  return try {
-    value.longValueExact()
-  } catch (_: ArithmeticException) {
-    throw CborDecodingException("$what is out of range")
-  }
+  if (value.bitLength() > Long.SIZE_BITS - 1) throw CborDecodingException("$what is out of range")
+  return value.toLong()
 }
 
-/** An unsigned integer that fits an Int exactly, such as a session status. */
 internal fun DataItem.asSmallUnsignedInt(what: String): Int {
   val value = asUnsignedInt(what)
   if (value > Int.MAX_VALUE) throw CborDecodingException("$what is out of range")
