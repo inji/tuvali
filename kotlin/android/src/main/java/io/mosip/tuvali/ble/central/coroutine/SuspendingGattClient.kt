@@ -60,7 +60,6 @@ private val CCCD_DISABLE = byteArrayOf(0x00, 0x00)
  *
  * One instance serves one connection; create a new one per session.
  */
-/** Notifications that may wait unread before the connection is closed as flooded. */
 internal const val MAX_QUEUED_GATT_NOTIFICATIONS = 4096
 
 @SuppressLint("MissingPermission")
@@ -361,7 +360,7 @@ internal class SuspendingGattClient(
   private fun onNotificationOverflow() {
     val overflow = GattNotificationOverflowException(MAX_QUEUED_GATT_NOTIFICATIONS)
     Log.e(logTag, overflow.message ?: "Notification queue overflow")
-    // collectors get the overflow, not a normal end, before the connection is closed
+    mutableConnectionState.value = GattConnectionState.Disconnected
     notificationChannel.close(overflow)
     failPendingOperation(overflow)
     close()

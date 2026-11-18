@@ -239,6 +239,17 @@ class SuspendingGattClientNotificationsTest {
   }
 
   @Test
+  fun `a pending read fails with GattNotificationOverflowException when a reader floods the queue`() = runTest {
+    connectSuccessfully(client, bluetooth)
+    // Android never answers this read
+    val reading = startOperation { runCatching { client.read(serviceUuid, readOnlyUuid) } }
+
+    repeat(MAX_QUEUED_GATT_NOTIFICATIONS + 1) { bluetooth.reportNotification(notifying, "01".hexToBytes()) }
+
+    assertTrue(reading.await().exceptionOrNull() is GattNotificationOverflowException)
+  }
+
+  @Test
   fun `notifications ends normally after close`() = runTest {
     connectSuccessfully(client, bluetooth)
     bluetooth.reportNotification(notifying, "01".hexToBytes())
