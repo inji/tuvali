@@ -26,6 +26,8 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -280,6 +282,8 @@ internal class SuspendingGattClient(
         }
       } as T
     } catch (exception: TimeoutCancellationException) {
+      // a caller's timeout cancels this coroutine too and must reach the caller unchanged
+      currentCoroutineContext().ensureActive()
       throw GattOperationTimeoutException(operation, timeout)
     }
   }

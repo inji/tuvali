@@ -7,6 +7,7 @@ import io.mockk.verify
 import io.mosip.tuvali.iso.exception.GattAttributeNotFoundException
 import io.mosip.tuvali.iso.exception.GattDisconnectedException
 import io.mosip.tuvali.iso.exception.GattOperationFailedException
+import io.mosip.tuvali.iso.exception.GattOperationTimeoutException
 import io.mosip.tuvali.testutils.ble.MockAndroidBluetooth
 import io.mosip.tuvali.testutils.ble.connectSuccessfully
 import io.mosip.tuvali.testutils.ble.startOperation
@@ -14,9 +15,11 @@ import io.mosip.tuvali.testutils.hexToBytes
 import io.mosip.tuvali.testutils.toHex
 import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -130,6 +133,18 @@ class SuspendingGattClientOperationsTest {
     bluetooth.reportMtuChanged(MAX_ATT_MTU, status = BluetoothGatt.GATT_FAILURE)
 
     assertEquals(DEFAULT_ATT_MTU, requesting.await())
+  }
+
+  @Test
+  fun `a caller's own timeout firing during an operation reaches the caller as its timeout, not GattOperationTimeoutException`() = runTest {
+    connectSuccessfully(client, bluetooth)
+    // the caller's 1 s limit ends before the 5 s operation timeout
+    val discovering = startOperation { runCatching { withTimeout(1.seconds) { client.discoverServices() } } }
+
+    advanceTimeBy(1.seconds + 1.milliseconds)
+
+    val failure = discovering.await().exceptionOrNull()
+    assertTrue("got $failure", failure is TimeoutCancellationException && failure !is GattOperationTimeoutException)
   }
 
   @Test
