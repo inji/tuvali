@@ -135,6 +135,16 @@ class SessionMessageTest {
   }
 
   @Test
+  fun `decode throws CborDecodingException when a reader's status 10 or 11 comes with data`() {
+    // Table 20: with status 10 or 11 the data element shall not be present
+    val encryptionErrorWithData = encodeCbor(cborMapOf("data" to byteArrayOf(1), "status" to 10L))
+    val decodingErrorWithData = encodeCbor(cborMapOf("data" to byteArrayOf(1), "status" to 11L))
+
+    assertThrows(CborDecodingException::class.java) { SessionMessage.decode(encryptionErrorWithData) }
+    assertThrows(CborDecodingException::class.java) { SessionMessage.decode(decodingErrorWithData) }
+  }
+
+  @Test
   fun `decode throws CborDecodingException when status is not an unsigned integer`() {
     val wrongType = encodeCbor(cborMapOf("status" to "20"))
 

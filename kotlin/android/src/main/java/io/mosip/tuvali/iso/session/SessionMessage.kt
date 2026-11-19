@@ -9,6 +9,7 @@ import io.mosip.tuvali.iso.cbor.encodeCbor
 import io.mosip.tuvali.iso.cbor.optional
 import io.mosip.tuvali.iso.cbor.required
 import io.mosip.tuvali.iso.cbor.untag24
+import io.mosip.tuvali.iso.exception.CborDecodingException
 
 private const val KEY_READER_KEY = "eReaderKey"
 private const val KEY_DATA = "data"
@@ -29,8 +30,7 @@ internal sealed class SessionMessage {
    */
   class Data(val data: ByteArray? = null, val status: Int? = null) : SessionMessage() {
     init {
-      val errorStatus = status == SessionStatus.ENCRYPTION_ERROR || status == SessionStatus.CBOR_DECODING_ERROR
-      require(!(errorStatus && data != null)) { "SessionData with status $status must not carry data" }
+      require(!carriesDataWithErrorStatus(data, status)) { "SessionData with status $status must not carry data" }
     }
 
     fun encode(): ByteArray {
@@ -44,16 +44,24 @@ internal sealed class SessionMessage {
   }
 
   companion object {
+    private fun carriesDataWithErrorStatus(data: ByteArray?, status: Int?): Boolean =
+      data != null && (status == SessionStatus.ENCRYPTION_ERROR || status == SessionStatus.CBOR_DECODING_ERROR)
+
     /**
      * Decodes a message from the reader. Only SessionEstablishment carries "eReaderKey", so that
      * key decides the kind; unknown keys are ignored. Malformed input is a CborDecodingException.
      */
     fun decode(message: ByteArray): SessionMessage {
       val map = decodeCbor(message).asMap("Session message")
-      val readerKey = map.optional(KEY_READER_KEY) ?: return Data(
-        data = map.optional(KEY_DATA)?.asBytes(KEY_DATA),
-        status = map.optional(KEY_STATUS)?.asSmallUnsignedInt(KEY_STATUS),
-      )
+      val readerKey = map.optional(KEY_READER_KEY)
+      if (readerKey == null) {
+        val data = map.optional(KEY_DATA)?.asBytes(KEY_DATA)
+        val status = map.optional(KEY_STATUS)?.asSmallUnsignedInt(KEY_STATUS)
+        if (carriesDataWithErrorStatus(data, status)) {
+          throw CborDecodingException("SessionData with status $status must not carry data")
+        }
+        return Data(data, status)
+      }
       return Establishment(
         readerCoseKey = untag24(readerKey),
         data = map.required(KEY_DATA, "SessionEstablishment").asBytes(KEY_DATA),
