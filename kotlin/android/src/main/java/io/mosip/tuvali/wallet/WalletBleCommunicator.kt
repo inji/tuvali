@@ -50,6 +50,8 @@ class WalletBleCommunicator(context: Context, private val eventEmitter: EventEmi
   private var secretsTranslator: SecretsTranslator? = null
 
   private var advPayload: ByteArray? = null
+  private var advName: String? = null
+  private var qrVerifierPK: ByteArray? = null
   private var transferHandler: TransferHandler
   private val handlerThread = HandlerThread("TransferHandlerThread", Process.THREAD_PRIORITY_DEFAULT)
 
@@ -115,28 +117,19 @@ class WalletBleCommunicator(context: Context, private val eventEmitter: EventEmi
       val scanResponsePayload = scanRecord?.getServiceData(ParcelUuid(VerifierBleCommunicator.SCAN_RESPONSE_SERVICE_UUID))
       val advertisementPayload = scanRecord?.getServiceData(ParcelUuid(VerifierBleCommunicator.SERVICE_UUID))
 
-      if (advertisementPayload != null && isSameAdvPayload(advertisementPayload) && scanResponsePayload != null) {
-        setVerifierPK(advertisementPayload, scanResponsePayload)
+      val matchedVerifierPK = matchingVerifierKey(
+        advertisementPayload, scanResponsePayload, scanRecord?.deviceName, advPayload, advName, qrVerifierPK
+      )
+
+      if (matchedVerifierPK != null) {
+        this.verifierPK = matchedVerifierPK
+        Log.d(logTag, "Public Key of Verifier: ${Hex.toHexString(verifierPK)}")
         central.connect(device)
         connectionState = VerifierConnectionState.CONNECTING
       } else {
        Log.d(logTag, "AdvIdentifier($advPayload) is not matching with peripheral device adv")
       }
     }
-  }
-
-  private fun setVerifierPK(advertisementPayload: ByteArray, scanResponsePayload: ByteArray) {
-    val first5BytesOfPkFromBLE = advertisementPayload.takeLast(5).toByteArray()
-    this.verifierPK = first5BytesOfPkFromBLE + scanResponsePayload
-
-    Log.d(logTag, "Public Key of Verifier: ${Hex.toHexString(verifierPK)}")
-  }
-
-  private fun isSameAdvPayload(advertisementPayload: ByteArray): Boolean {
-    this.advPayload?.let {
-      return it contentEquals advertisementPayload
-    }
-    return false
   }
 
   override fun onDeviceConnected(device: BluetoothDevice) {
@@ -309,6 +302,8 @@ class WalletBleCommunicator(context: Context, private val eventEmitter: EventEmi
 
   fun setAdvPayload(advIdentifier: String, verifierPK: String) {
     this.advPayload = AdvertisementPayload.getAdvPayload(advIdentifier, verifierPK)
+    this.advName = advIdentifier
+    this.qrVerifierPK = Hex.decode(verifierPK)
   }
 
   fun sendData(payload: String) {
