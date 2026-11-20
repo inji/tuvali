@@ -15,11 +15,28 @@ import androidx.annotation.RequiresPermission
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat.OnRequestPermissionsResultCallback
 import com.google.zxing.BarcodeFormat
+import androidx.lifecycle.lifecycleScope
+import co.nstant.`in`.cbor.CborEncoder
+import co.nstant.`in`.cbor.model.Array as CborArray
+import co.nstant.`in`.cbor.model.Map as CborMap
+import co.nstant.`in`.cbor.model.UnicodeString
+import co.nstant.`in`.cbor.model.UnsignedInteger
 import com.google.zxing.qrcode.QRCodeWriter
 import io.mosip.tuvali.common.events.SecureChannelEstablishedEvent
 import io.mosip.tuvali.common.events.DataReceivedEvent
+import io.mosip.tuvali.iso.MdocCallbacks
+import io.mosip.tuvali.iso.MdocPresentationOptions
+import io.mosip.tuvali.iso.MdocPresenter
+import io.mosip.tuvali.iso.MdocProgress
+import io.mosip.tuvali.iso.MdocRequest
+import io.mosip.tuvali.iso.MdocResult
+import io.mosip.tuvali.iso.MdocSharingDecision
+import io.mosip.tuvali.iso.ReaderTrustStatus
 import io.mosip.tuvali.verifier.Verifier
 import io.mosip.tuvali.wallet.Wallet
+import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
 
@@ -65,6 +82,10 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
     findViewById<Button>(R.id.verifierButton)?.setOnClickListener {
       startAdvertising()
     }
+
+    findViewById<Button>(R.id.mdocButton)?.setOnClickListener {
+      startMdocPresentation()
+    }
   }
 
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -76,10 +97,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
       }
     }
   }
-
-  // ============================================================
-  // WALLET SIDE
-  // ============================================================
 
   @SuppressLint("MissingInflatedId")
   private fun startScanningWithUri(uri: String) {
@@ -129,10 +146,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
     wallet.disconnect()
     showActionsView()
   }
-
-  // ============================================================
-  // VERIFIER SIDE
-  // ============================================================
 
   @SuppressLint("SetTextI18n")
   private fun startAdvertising() {
@@ -194,8 +207,107 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
   }
 
   // ============================================================
-  // UI HELPERS
+  // MDOC HOLDER SIDE (ISO 18013-5, wallet as BLE client)
   // ============================================================
+
+  private val presenter by lazy { MdocPresenter(this) }
+
+  /** Logs and also appends to files/mdoc-runs.log, so results survive a dropped USB link. */
+  private fun mdocLog(message: String) {
+    Log.i(TAG, "mdoc $message")
+    runCatching { java.io.File(filesDir, "mdoc-runs.log").appendText("${java.util.Date()} $message\n") }
+  }
+
+  private fun startMdocPresentation() {
+    showLoadingLayout()
+    findViewById<LinearLayout>(R.id.qrSection)?.visibility = View.VISIBLE
+    findViewById<TextView>(R.id.transferText)?.text = ""
+    findViewById<ImageView>(R.id.qrCodeImage)?.visibility = View.VISIBLE
+    setCancelLoadingButton { presenter.cancel() }
+
+    lifecycleScope.launch {
+      val result = presenter.present(MdocPresentationOptions(), mdocCallbacks)
+      mdocLog("presentation ended: ${describe(result)}")
+      showActionsView()
+      findViewById<LinearLayout>(R.id.qrSection)?.visibility = View.VISIBLE
+      findViewById<ImageView>(R.id.qrCodeImage)?.visibility = View.GONE
+      updateQRCodeData("")
+      findViewById<TextView>(R.id.transferText)?.text = "Last mdoc result:\n${describe(result)}"
+    }
+  }
+
+  private val mdocCallbacks = object : MdocCallbacks {
+    override suspend fun onQrReady(qrText: String) {
+      mdocLog("QR ready")
+      updateQRCodeData(qrText)
+      showQRCode(qrText)
+    }
+
+    override fun onProgress(progress: MdocProgress) {
+      mdocLog("progress: $progress")
+      updateLoadingText(progress.name)
+    }
+
+    override suspend fun onRequest(request: MdocRequest): MdocSharingDecision {
+      val summary = request.documents.joinToString("\n\n") { doc ->
+        "${doc.docType}\nreader: ${describe(doc.readerTrust)}\n" +
+          doc.nameSpaces.entries.joinToString("\n") { (nameSpace, elements) ->
+            "$nameSpace: ${elements.keys.joinToString()}"
+          }
+      }
+      mdocLog("request #${request.requestNumber}:\n$summary")
+      findViewById<TextView>(R.id.transferText)?.text = "Request #${request.requestNumber}\n\n$summary"
+      return askHolder(emptyDeviceResponse(request.documents.map { it.docType }))
+    }
+  }
+
+  private suspend fun askHolder(answer: ByteArray): MdocSharingDecision {
+    val decision = CompletableDeferred<MdocSharingDecision>()
+    val buttons = findViewById<LinearLayout>(R.id.mdocDecisionLayout)
+    buttons?.visibility = View.VISIBLE
+    findViewById<ScrollView>(R.id.mainScroll)?.let { scroll -> scroll.post { scroll.fullScroll(View.FOCUS_DOWN) } }
+    findViewById<Button>(R.id.mdocSendBtn)?.setOnClickListener {
+      decision.complete(MdocSharingDecision.Send(answer))
+    }
+    findViewById<Button>(R.id.mdocDeclineBtn)?.setOnClickListener {
+      decision.complete(MdocSharingDecision.Decline)
+    }
+    return try {
+      decision.await()
+    } finally {
+      buttons?.visibility = View.GONE
+    }
+  }
+
+  /**
+   * A valid DeviceResponse that shares nothing (ISO 18013-5 8.3.2.1.2.2): status 0, no documents,
+   * and error 0 ("data not returned") for each requested docType. Enough to test the session.
+   */
+  private fun emptyDeviceResponse(docTypes: List<String>): ByteArray {
+    val documentErrors = CborArray()
+    docTypes.distinct().forEach { docType ->
+      documentErrors.add(CborMap().put(UnicodeString(docType), UnsignedInteger(0)))
+    }
+    val response = CborMap()
+      .put(UnicodeString("version"), UnicodeString("1.0"))
+      .put(UnicodeString("documentErrors"), documentErrors)
+      .put(UnicodeString("status"), UnsignedInteger(0))
+    return ByteArrayOutputStream().also { CborEncoder(it).encode(response) }.toByteArray()
+  }
+
+  private fun describe(trust: ReaderTrustStatus): String = when (trust) {
+    ReaderTrustStatus.NotSigned -> "not signed"
+    is ReaderTrustStatus.Verified -> "verified (${trust.readerName})"
+    is ReaderTrustStatus.Unverified -> "unverified (${trust.readerName}): ${trust.reason}"
+    is ReaderTrustStatus.Invalid -> "INVALID: ${trust.reason}"
+  }
+
+  private fun describe(result: MdocResult): String = when (result) {
+    is MdocResult.Completed -> "Completed (reader confirmed: ${result.confirmedByReader})"
+    MdocResult.Declined -> "Declined"
+    MdocResult.Cancelled -> "Cancelled"
+    is MdocResult.Failed -> "Failed: ${result.failure} ${result.detail.orEmpty()}"
+  }
 
   private fun setCancelLoadingButton(onClick: (View) -> Unit) {
     findViewById<Button>(R.id.cancelLoadingBtn)?.setOnClickListener(onClick)
@@ -238,7 +350,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
     }
   }
 
-  // LOGGING HELPERS
   private fun logPayload(prefix: String, data: Any?) {
     when (data) {
       is ByteArray -> Log.d(TAG, "$prefix (bytes=${data.size})")
@@ -256,10 +367,6 @@ class MainActivity : AppCompatActivity(), OnRequestPermissionsResultCallback {
       else -> data.toString()
     }
   }
-
-  // ============================================================
-  // KEYBOARD DISMISS ON OUTSIDE TAP
-  // ============================================================
 
   override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
     val v = currentFocus

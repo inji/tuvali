@@ -23,3 +23,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "My Application"
 include(":app")
+
+// Exercise this checkout, including the new mdoc API, without a locally published artifact.
+includeBuild("../../android") {
+  dependencySubstitution {
+    substitute(module("io.inji:tuvali")).using(project(":"))
+  }
+}
